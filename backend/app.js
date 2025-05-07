@@ -2,57 +2,121 @@ const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const connectDB = require('./config/database');
 require('dotenv').config();
 require('./config/auth');
 
-//Testing db connection
+// Import routes
+const authRoutes = require('./routes/authRoutes');
+const postRoutes = require('./routes/postRoutes');
+const replyRoutes = require('./routes/replyRoutes');
+const individualReplyRoutes = require('./routes/individualReplyRoutes');
+
+// Connect to MongoDB
 connectDB();
 
-function isLoggedIn(req, res, next) {
-    req.user ? next(): res.sendStatus(401);
-}
-
+// Initialize Express app
 const app = express();
-app.use(express.json());
 
-app.use(session({ secret: process.env.SESSION_SECRET, resave: false, saveUninitialized: false }));
+// Middleware
+app.use(express.json());
+app.use(cors());
+app.use(session({ 
+  secret: process.env.SESSION_SECRET, 
+  resave: false, 
+  saveUninitialized: false 
+}));
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Basic middleware for checking if user is logged in (for Passport session auth)
+function isLoggedIn(req, res, next) {
+  req.user ? next() : res.sendStatus(401);
+}
 
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/posts', postRoutes);
+app.use('/api/posts', replyRoutes);
+app.use('/api/replies', individualReplyRoutes);
+
+// Legacy Google auth routes (can be migrated to authRoutes later)
 app.get('/', (req, res) => {
-    res.send('<a href="/auth/google">Authenticate with Google</a>');
-})
+  res.send('<a href="/auth/google">Authenticate with Google</a>');
+});
 
 app.get('/auth/google', 
-    passport.authenticate('google', {scope: ['email', 'profile']})
+  passport.authenticate('google', {scope: ['email', 'profile']})
 );
 
 app.get('/google/callback', 
-    passport.authenticate('google', {
-        successRedirect: '/protected',
-        failureRedirect: '/'
-    })
+  passport.authenticate('google', {
+    successRedirect: '/protected',
+    failureRedirect: '/'
+  })
 );
 
-
-
 app.get('/protected', isLoggedIn, (req, res) => {
-    const googleId = req.user.id;
-    
-    // Send back user information 
-    res.json({
-        message: "You're authenticated!",
-        user: req.user,
-        googleId: googleId
-    });
+  try {
+    // Generate JWT token for the authenticated Google user
+    const jwt = require('jsonwebtoken');
+    const token = jwt.sign(
+      { userId: req.user._id },
+      process.env.JWT_SECRET || 'whats-it-like-default-jwt-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Redirect to frontend with the token
+    res.redirect(`http://localhost:5173/auth-callback?token=${token}&redirect=/dashboard`);
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.redirect('http://localhost:5173/signin?error=auth_failed');
+  }
 });
 
-mongoose.connection.once('open', () => {
-    console.log('MongoDB connected');
-    app.listen(process.env.PORT, () => {
-        console.log(`Server is listening on port ${process.env.PORT}`);
-    })
-})
+// For development - show available routes
+app.get('/api', (req, res) => {
+  res.json({
+    message: 'API is running',
+    availableRoutes: {
+      auth: [
+        { method: 'POST', path: '/api/auth/signup', description: 'Register a new user' },
+        { method: 'POST', path: '/api/auth/login', description: 'Login with email and password' },
+        { method: 'GET', path: '/api/auth/me', description: 'Get current user profile' },
+        { method: 'GET', path: '/api/auth/google', description: 'Google OAuth login (placeholder)' },
+        { method: 'POST', path: '/api/auth/logout', description: 'Logout current user' }
+      ],
+      posts: [
+        { method: 'GET', path: '/api/posts', description: 'Get all posts' },
+        { method: 'GET', path: '/api/posts/:id', description: 'Get post by ID' },
+        { method: 'POST', path: '/api/posts', description: 'Create a new post' },
+        { method: 'PUT', path: '/api/posts/:id', description: 'Update a post' },
+        { method: 'DELETE', path: '/api/posts/:id', description: 'Delete a post' },
+        { method: 'POST', path: '/api/posts/:id/vote', description: 'Vote on a post' }
+      ]
+    }
+  });
+});
 
+// Handle 404s
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Server error', error: process.env.NODE_ENV === 'production' ? {} : err });
+});
+
+// Start server after MongoDB connects
+mongoose.connection.once('open', () => {
+  console.log('MongoDB connected');
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+  });
+});
+
+module.exports = app;

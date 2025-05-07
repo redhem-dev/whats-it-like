@@ -9,6 +9,14 @@ const userSchema = new Schema({
     trim: true,
     lowercase: true
   },
+  firstName: {
+    type: String,
+    trim: true
+  },
+  lastName: {
+    type: String,
+    trim: true
+  },
   passwordHash: {
     type: String
   },
@@ -16,7 +24,8 @@ const userSchema = new Schema({
     type: String
   },
   
-  // Email verification
+  // Email verification - commented out for MVP
+  /*
   emailVerified: {
     type: Boolean,
     default: false
@@ -24,8 +33,10 @@ const userSchema = new Schema({
   emailVerificationToken: {
     type: String
   },
+  */
   
-  // ID document verification
+  // ID document verification - commented out for MVP
+  /*
   documentVerified: {
     type: Boolean,
     default: false
@@ -33,6 +44,7 @@ const userSchema = new Schema({
   documentVerificationDate: {
     type: Date
   },
+  */
   
   // Password reset functionality
   resetPasswordToken: {
@@ -42,7 +54,8 @@ const userSchema = new Schema({
     type: Date
   },
   
-  // Personal information extracted from ID document
+  // Personal information extracted from ID document - commented out for MVP
+  /*
   personalInfo: {
     firstName: {
       type: String
@@ -57,8 +70,10 @@ const userSchema = new Schema({
       type: String
     }
   },
+  */
   
-  // User's verified locations
+  // User's verified locations - commented out for MVP
+  /*
   locations: [{
     country: {
       type: String,
@@ -81,6 +96,7 @@ const userSchema = new Schema({
       default: Date.now
     }
   }],
+  */
   
   // Security features
   lastLogin: {
@@ -94,15 +110,23 @@ const userSchema = new Schema({
     type: Date
   },
   
-  // References to user activity
+  // References
+  /*
   posts: [{
     type: Schema.Types.ObjectId,
     ref: 'Post'
   }],
+  */
+  
+  // Voting history
   votes: [{
     postId: {
       type: Schema.Types.ObjectId,
       ref: 'Post'
+    },
+    replyId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Reply'
     },
     vote: {
       type: Number,
@@ -132,8 +156,8 @@ userSchema.index({ email: 1 }, { unique: true });
 // Add index for google ID
 userSchema.index({ googleId: 1 }, { sparse: true });
 
-// Add index for idNumber in personalInfo to ensure uniqueness of IDs
-userSchema.index({ 'personalInfo.idNumber': 1 }, { sparse: true });
+// Commented out for MVP - ID document uniqueness
+// userSchema.index({ 'personalInfo.idNumber': 1 }, { sparse: true });
 
 // Add method to check if account is locked
 userSchema.methods.isLocked = function() {
