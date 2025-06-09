@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
+// Keep the point schema for future geospatial queries, but comment out for MVP
+/*
 const pointSchema = new Schema({
   type: {
     type: String,
@@ -13,7 +15,9 @@ const pointSchema = new Schema({
     required: true
   }
 });
+*/
 
+// Keep edit history for future use
 const editHistorySchema = new Schema({
   timestamp: {
     type: Date,
@@ -45,7 +49,7 @@ const postSchema = new Schema({
     trim: true
   }],
   
-  // Location information
+  // Location information - simplified for MVP
   location: {
     country: {
       type: String,
@@ -54,35 +58,33 @@ const postSchema = new Schema({
     city: {
       type: String,
       required: true
-    },
+    }
+    // Commented out for MVP, will add later
+    /*
     coordinates: {
       type: pointSchema,
-      index: '2dsphere' // Enables geospatial queries
+      required: false
     }
+    */
   },
   
-  // Moderation status
+  // Status - keeping simple for MVP
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
-    default: 'pending'
-  },
-  moderationResult: {
-    flagged: {
-      type: Boolean,
-      default: false
-    },
-    categories: [{
-      type: String,
-      enum: ['hate-speech', 'violence', 'harassment', 'misinformation', 'other']
-    }],
-    score: {
-      type: Number,
-      default: 0
-    }
+    default: 'approved' // Auto-approve for MVP
   },
   
-  // Voting information
+  // AI Moderation - commented out for MVP
+  /*
+  moderationResult: {
+    flagged: Boolean,
+    categories: [String],
+    score: Number
+  },
+  */
+  
+  // Voting
   votes: {
     upvotes: {
       type: Number,
@@ -98,38 +100,28 @@ const postSchema = new Schema({
     }]
   },
   
+  // Reporting - commented out for MVP
+  /*
   reportCount: {
     type: Number,
     default: 0
   },
+  */
   
-  // Version control for edits
+  // Edit history - commented out for MVP but kept for future
   editHistory: [editHistorySchema],
   
-  // For optimistic concurrency control
-  version: {
-    type: Number,
-    default: 1
-  }
-}, { 
-  timestamps: true, // Automatically adds createdAt and updatedAt fields
-  toJSON: { 
-    virtuals: true 
+  // Timestamps
+  createdAt: {
+    type: Date,
+    default: Date.now
   },
-  toObject: { 
-    virtuals: true 
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
-});
-
-// Add indexes for efficient querying
-postSchema.index({ authorId: 1 });
-postSchema.index({ status: 1 });
-postSchema.index({ 'location.country': 1, 'location.city': 1 });
-postSchema.index({ tags: 1 });
-
-// Virtual for calculating total votes
-postSchema.virtual('voteScore').get(function() {
-  return this.votes.upvotes - this.votes.downvotes;
+}, {
+  timestamps: true // Automatically handle createdAt and updatedAt
 });
 
 // Method to check if a user has already voted
@@ -139,12 +131,12 @@ postSchema.methods.hasUserVoted = function(userId) {
 
 // Method to handle a vote
 postSchema.methods.registerVote = function(userId, voteValue) {
-  // If user already voted, do nothing
+  // If user has already voted, don't allow duplicate votes
   if (this.hasUserVoted(userId)) {
     return false;
   }
   
-  // Otherwise, register the vote
+  // Register the vote
   if (voteValue === 1) {
     this.votes.upvotes += 1;
   } else if (voteValue === -1) {

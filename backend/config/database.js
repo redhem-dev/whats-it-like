@@ -8,10 +8,12 @@ const connectDB = async () => {
             useUnifiedTopology: true
         });
         console.log('MongoDB connected');
+        
+        // Removed seeding functionality as requested
     } catch (err) {
         console.error(err.message);
-        
     }
 }
+
 
 module.exports = connectDB;
