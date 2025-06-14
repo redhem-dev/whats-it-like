@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { useNavigate } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
 
 const SinglePostPage = () => {
   const { postId } = useParams();
+  const { user: authUser } = useAuth();
+  const [user, setUser] = useState(null);
   const [post, setPost] = useState(null);
   const [replies, setReplies] = useState([]);
   const [newReply, setNewReply] = useState('');
@@ -15,6 +18,23 @@ const SinglePostPage = () => {
   const [replyError, setReplyError] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const navigate = useNavigate();
+  
+  // Format user data from auth context
+  useEffect(() => {
+    if (authUser) {
+      const formattedUser = {
+        id: authUser.id || authUser._id,
+        email: authUser.email,
+        personalInfo: {
+          firstName: authUser.personalInfo?.firstName || authUser.firstName || '',
+          lastName: authUser.personalInfo?.lastName || authUser.lastName || ''
+        },
+        status: authUser.status || '',
+        reputation: authUser.reputation || 0
+      };
+      setUser(formattedUser);
+    }
+  }, [authUser]);
 
   // Get current user ID from localStorage if available
   useEffect(() => {
@@ -392,7 +412,7 @@ const SinglePostPage = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100">
-        <Navbar />
+        <Navbar user={user} />
         <div className="max-w-4xl mx-auto py-8 px-4">
           <div className="bg-white shadow rounded-lg p-8 text-center">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -409,7 +429,7 @@ const SinglePostPage = () => {
   if (error || !post) {
     return (
       <div className="min-h-screen bg-gray-100">
-        <Navbar />
+        <Navbar user={user} />
         <div className="max-w-4xl mx-auto py-8 px-4">
           <div className="bg-white shadow rounded-lg p-8 text-center">
             <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -425,7 +445,7 @@ const SinglePostPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
+      <Navbar user={user} />
       
       <main className="max-w-4xl mx-auto py-8 px-4">
         {/* Post */}

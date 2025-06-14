@@ -114,7 +114,12 @@ exports.login = async (req, res) => {
         id: user._id,
         email: user.email,
         status: user.status,
-        lastLogin: user.lastLogin
+        lastLogin: user.lastLogin,
+        personalInfo: {
+          firstName: user.firstName || '',
+          lastName: user.lastName || ''
+        },
+        createdAt: user.createdAt
       }
     });
   } catch (error) {

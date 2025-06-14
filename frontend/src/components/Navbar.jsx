@@ -7,12 +7,29 @@ const Navbar = ({ user }) => {
   
   // Function to get user initials
   const getUserInitials = () => {
-    if (!user || !user.personalInfo) return '?';
-    const { firstName, lastName } = user.personalInfo;
-    if (firstName && lastName) {
-      return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+    if (!user) return '?';
+    
+    // If user has personalInfo with first and last name
+    if (user.personalInfo && user.personalInfo.firstName && user.personalInfo.lastName) {
+      return `${user.personalInfo.firstName.charAt(0)}${user.personalInfo.lastName.charAt(0)}`.toUpperCase();
     }
-    return user.email ? user.email.charAt(0).toUpperCase() : '?';
+    
+    // If only first name exists
+    if (user.personalInfo && user.personalInfo.firstName) {
+      return `${user.personalInfo.firstName.charAt(0)}`.toUpperCase();
+    }
+    
+    // Fall back to email
+    if (user.email) {
+      const emailParts = user.email.split('@');
+      if (emailParts.length > 1) {
+        // Try to get first two characters of the email username
+        return emailParts[0].substring(0, 2).toUpperCase();
+      }
+      return user.email.charAt(0).toUpperCase();
+    }
+    
+    return '?';
   };
 
   return (

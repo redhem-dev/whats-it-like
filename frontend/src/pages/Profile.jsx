@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
+import useAuth from '../hooks/useAuth';
 
 // Mock user data
 const mockUser = {
@@ -79,9 +80,37 @@ const mockVotedPosts = [
 ];
 
 const Profile = () => {
-  const [user, setUser] = useState(mockUser);
+  const { user: authUser, isAuthenticated } = useAuth();
+  const [user, setUser] = useState(null);
   const [votedPosts, setVotedPosts] = useState(mockVotedPosts);
   const [activeTab, setActiveTab] = useState('profile');
+  
+  useEffect(() => {
+    // If user is authenticated, use the real user data
+    if (authUser) {
+      // Format user data structure to match component expectations
+      const formattedUser = {
+        id: authUser.id || authUser._id,
+        email: authUser.email,
+        personalInfo: {
+          firstName: authUser.personalInfo?.firstName || authUser.firstName || '',
+          lastName: authUser.personalInfo?.lastName || authUser.lastName || ''
+        },
+        status: authUser.status,
+        createdAt: authUser.createdAt,
+        votes: authUser.votes || [],
+        // Other properties that might be needed
+        reputation: authUser.reputation || 0,
+        locations: authUser.locations || [],
+        documentVerified: authUser.documentVerified || false,
+        emailVerified: authUser.emailVerified || false
+      };
+      setUser(formattedUser);
+    } else {
+      // Fall back to mock data only for development purposes
+      setUser(mockUser);
+    }
+  }, [authUser]);
 
   // Function to format date
   const formatDate = (date) => {
@@ -94,8 +123,49 @@ const Profile = () => {
 
   // Function to calculate member since
   const getMemberSince = () => {
+    if (!user || !user.createdAt) return 'N/A';
     return formatDate(user.createdAt);
   };
+  
+  // Function to get user initials
+  const getUserInitials = () => {
+    if (!user) return '?';
+    
+    // If user has personalInfo with first and last name
+    if (user.personalInfo && user.personalInfo.firstName && user.personalInfo.lastName) {
+      return `${user.personalInfo.firstName.charAt(0)}${user.personalInfo.lastName.charAt(0)}`.toUpperCase();
+    }
+    
+    // If only first name exists
+    if (user.personalInfo && user.personalInfo.firstName) {
+      return `${user.personalInfo.firstName.charAt(0)}`.toUpperCase();
+    }
+    
+    // Fall back to email
+    if (user.email) {
+      const emailParts = user.email.split('@');
+      if (emailParts.length > 1) {
+        // Try to get first two characters of the email username
+        return emailParts[0].substring(0, 2).toUpperCase();
+      }
+      return user.email.charAt(0).toUpperCase();
+    }
+    
+    return '?';
+  };
+
+  // Show loading state if user data is not yet loaded
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3 text-gray-600">Loading profile...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -107,14 +177,14 @@ const Profile = () => {
           <div className="px-6 py-8 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-blue-600 text-white relative">
             <div className="flex items-center">
               <div className="w-20 h-20 rounded-full bg-white text-blue-600 flex items-center justify-center text-3xl font-bold mr-6">
-                {user.personalInfo.firstName.charAt(0)}{user.personalInfo.lastName.charAt(0)}
+                {getUserInitials()}
               </div>
               <div>
-                <h1 className="text-2xl font-bold">{user.personalInfo.firstName} {user.personalInfo.lastName}</h1>
+                <h1 className="text-2xl font-bold">{user.personalInfo?.firstName || ''} {user.personalInfo?.lastName || ''}</h1>
                 <p className="text-blue-100">{user.email}</p>
                 <div className="mt-2 flex items-center">
                   <div className="flex items-center mr-6">
-                    <span className="font-semibold text-xl">{user.reputation}</span>
+                    <span className="font-semibold text-xl">{user.reputation || 0}</span>
                     <span className="ml-1 text-blue-100">Reputation</span>
                   </div>
                   <div className="text-blue-100">

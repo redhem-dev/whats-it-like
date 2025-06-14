@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import useAuth from '../hooks/useAuth';
 
 // Keep mock user and trending posts for now
 const mockUser = {
@@ -87,19 +88,40 @@ const mockTags = [
 ];
 
 const Dashboard = () => {
+  const { user: authUser } = useAuth();
+  const [user, setUser] = useState(null);
+  const [trendingPosts, setTrendingPosts] = useState(mockTrendingPosts);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [user, setUser] = useState(mockUser);
-  const [trendingPosts, setTrendingPosts] = useState(mockTrendingPosts);
+  const [availableCities, setAvailableCities] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [filters, setFilters] = useState({
     country: '',
     city: '',
     tags: []
   });
-  const [availableCities, setAvailableCities] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentUserId, setCurrentUserId] = useState(null);
+
+  // Use real user data when available
+  useEffect(() => {
+    if (authUser) {
+      const formattedUser = {
+        id: authUser.id || authUser._id,
+        email: authUser.email,
+        personalInfo: {
+          firstName: authUser.personalInfo?.firstName || authUser.firstName || '',
+          lastName: authUser.personalInfo?.lastName || authUser.lastName || ''
+        },
+        status: authUser.status,
+        reputation: authUser.reputation || 0
+      };
+      setUser(formattedUser);
+    } else {
+      // Fall back to mock data only during development
+      setUser(mockUser);
+    }
+  }, [authUser]);
 
   // Extract user ID from token when component mounts
   useEffect(() => {
@@ -385,6 +407,21 @@ const Dashboard = () => {
     return post.votes.upvotes - post.votes.downvotes;
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar user={user} />
+        <main className="max-w-screen-xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <span className="ml-3 text-gray-600">Loading posts...</span>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar user={user} />
@@ -656,11 +693,12 @@ const Dashboard = () => {
                 ))}
               </div>
               
-              <button 
-                className="mt-4 w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium"
+              <Link 
+                to="/trending"
+                className="mt-4 block w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium"
               >
                 View All Trending Posts
-              </button>
+              </Link>
             </div>
           </div>
         </div>
