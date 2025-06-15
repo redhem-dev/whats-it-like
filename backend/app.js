@@ -12,6 +12,7 @@ const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
 const replyRoutes = require('./routes/replyRoutes');
 const individualReplyRoutes = require('./routes/individualReplyRoutes');
+const verificationRoutes = require('./routes/verificationRoutes');
 
 // Connect to MongoDB
 connectDB();
@@ -21,11 +22,25 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+
+// Configure CORS to allow credentials (cookies) for frontend-backend communication
+app.use(cors({
+  origin: 'http://localhost:5173', // Frontend URL
+  credentials: true, // Allow cookies to be sent
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Configure sessions for ID verification
 app.use(session({ 
-  secret: process.env.SESSION_SECRET, 
+  secret: process.env.SESSION_SECRET || 'temporarydevsecretshouldbereplaced', 
   resave: false, 
-  saveUninitialized: false 
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    maxAge: 30 * 60 * 1000 // 30 minutes - enough time for ID verification process
+  }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -40,6 +55,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/posts', replyRoutes);
 app.use('/api/replies', individualReplyRoutes);
+app.use('/api/verify', verificationRoutes);
 
 // Legacy Google auth routes (can be migrated to authRoutes later)
 app.get('/', (req, res) => {

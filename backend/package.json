@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google-cloud/vision": "^5.2.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -20,6 +21,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.16.0",
     "mongoose": "^8.13.2",
+    "multer": "^2.0.1",
     "nodemon": "^3.1.9",
     "passport": "^0.7.0",
     "passport-google-oauth2": "^0.2.0"

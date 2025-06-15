@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
+import IdVerification from "./IdVerification";
 
 const SignUp = () => {
   const [email, setEmail] = useState("");
@@ -8,12 +9,15 @@ const SignUp = () => {
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [idNumber, setIdNumber] = useState("");
   const [error, setError] = useState("");
+  const [verificationStep, setVerificationStep] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
   const { signup, loading } = useAuth();
   const navigate = useNavigate();
 
-  // Handle form submission for registration
-  const handleSignUp = async (e) => {
+  // Proceed to ID verification step
+  const proceedToVerification = (e) => {
     e.preventDefault();
     setError("");
 
@@ -41,18 +45,42 @@ const SignUp = () => {
       setError("First name and last name are required");
       return;
     }
+    
+    // ID number validation
+    if (!idNumber.trim()) {
+      setError("ID number is required for verification");
+      return;
+    }
 
+    // Proceed to verification step
+    setVerificationStep(true);
+  };
+
+  // Handle ID verification completion
+  const handleVerificationComplete = (verified) => {
+    setIsVerified(verified);
+    
+    if (verified) {
+      // If verified, proceed with account creation
+      handleSignUp();
+    }
+  };
+  
+  // Handle form submission for registration after verification
+  const handleSignUp = async () => {
     try {
-      const result = await signup(email, password, firstName, lastName);
+      const result = await signup(email, password, firstName, lastName, idNumber);
       
       if (result.success) {
-        // Registration successful - redirect to home or dashboard
+        // Registration successful - redirect to signin
         navigate("/signin");
       } else {
         setError(result.error || "Failed to register. Please try again.");
+        setVerificationStep(false);
       }
     } catch (err) {
       setError("An unexpected error occurred. Please try again.");
+      setVerificationStep(false);
     }
   };
 
@@ -73,7 +101,7 @@ const SignUp = () => {
           </div>
 
           <h2 className="text-2xl font-semibold text-black mb-6 text-center">
-            Create Account
+            {verificationStep ? "ID Verification" : "Create Account"}
           </h2>
 
           {error && (
@@ -82,7 +110,8 @@ const SignUp = () => {
             </div>
           )}
 
-          <form onSubmit={handleSignUp} className="space-y-4">
+          {!verificationStep ? (
+            <form onSubmit={proceedToVerification} className="space-y-4">
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-black mb-1">
                 First Name
@@ -157,13 +186,28 @@ const SignUp = () => {
                 required
               />
             </div>
+            
+            <div>
+              <label htmlFor="idNumber" className="block text-sm font-medium text-black mb-1">
+                ID Number
+              </label>
+              <input
+                id="idNumber"
+                type="text"
+                value={idNumber}
+                onChange={(e) => setIdNumber(e.target.value)}
+                className="px-4 py-2 rounded bg-white text-black placeholder-zinc-400 border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-black w-full"
+                placeholder="Enter your ID number"
+                required
+              />
+            </div>
 
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-black text-white font-semibold py-2 rounded hover:bg-zinc-800 transition-colors"
             >
-              {loading ? "Creating Account..." : "Sign Up"}
+              {loading ? "Creating Account..." : verificationStep ? "Complete Registration" : "Proceed to Verification"}
             </button>
 
             {/* Divider */}
@@ -181,6 +225,20 @@ const SignUp = () => {
               Sign up with Google
             </button>
           </form>
+          ) : (
+            <div className="id-verification-container">
+              <IdVerification 
+                onVerificationComplete={handleVerificationComplete} 
+                formData={{firstName, lastName, idNumber}} 
+              />
+              <button
+                onClick={() => setVerificationStep(false)}
+                className="mt-4 w-full bg-zinc-300 text-black font-semibold py-2 rounded hover:bg-zinc-400 transition-colors"
+              >
+                Back to Registration
+              </button>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-zinc-600">
@@ -191,12 +249,7 @@ const SignUp = () => {
             </p>
           </div>
 
-          {/* Note about ID verification being temporary removed */}
-          <div className="mt-6 p-3 bg-zinc-200 rounded text-xs text-zinc-600 text-center">
-            <p>
-              <strong>Note:</strong> ID document verification has been disabled for this MVP version.
-            </p>
-          </div>
+
         </div>
       </div>
     </div>

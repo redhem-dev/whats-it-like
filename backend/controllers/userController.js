@@ -12,29 +12,45 @@ const JWT_SECRET = process.env.JWT_SECRET;
  */
 exports.signup = async (req, res) => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, idNumber } = req.body;
 
     // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
-
+    
+    // Check ID verification status from session if not in test/development mode
+    if (process.env.NODE_ENV === 'production') {
+      if (!req.session || !req.session.isVerified) {
+        return res.status(403).json({ 
+          message: 'ID verification required before registration. Please verify your identity first.'
+        });
+      }
+    }
+    
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Create new user
+    // Create new user with ID number included
     user = new User({
       email,
       firstName,
       lastName,
+      idNumber,  // Store ID number securely
       passwordHash,
-      // For MVP, we set email as verified since verification is not implemented yet
-      // emailVerified: false,
+      // If we've passed ID verification, mark as verified
+      verified: req.session?.isVerified || process.env.NODE_ENV !== 'production',
     });
 
     await user.save();
+    
+    // Clear verification data from session after successful registration
+    if (req.session) {
+      delete req.session.idVerification;
+      delete req.session.isVerified;
+    }
 
     // Create JWT token
     const token = jwt.sign(
@@ -114,6 +130,8 @@ exports.login = async (req, res) => {
         id: user._id,
         email: user.email,
         status: user.status,
+        verified: user.verified || false,  // Include verification status
+        idNumber: user.idNumber,  // Include ID number (masked in frontend if needed)
         lastLogin: user.lastLogin,
         personalInfo: {
           firstName: user.firstName || '',

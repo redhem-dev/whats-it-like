@@ -35,16 +35,19 @@ const userSchema = new Schema({
   },
   */
   
-  // ID document verification - commented out for MVP
-  /*
-  documentVerified: {
+  // ID document verification
+  idNumber: {
+    type: String,
+    trim: true
+  },
+  verified: {
     type: Boolean,
     default: false
   },
-  documentVerificationDate: {
-    type: Date
+  verificationDate: {
+    type: Date,
+    default: null
   },
-  */
   
   // Password reset functionality
   resetPasswordToken: {

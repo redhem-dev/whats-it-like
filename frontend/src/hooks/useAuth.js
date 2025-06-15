@@ -30,7 +30,7 @@ const useAuth = () => {
   }, [token]);
 
   // Signup with email and password
-  const signup = useCallback(async (email, password, firstName, lastName) => {
+  const signup = useCallback(async (email, password, firstName, lastName, idNumber = '') => {
     setLoading(true);
     setError(null);
     
@@ -40,7 +40,8 @@ const useAuth = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password, firstName, lastName }),
+        body: JSON.stringify({ email, password, firstName, lastName, idNumber }),
+        credentials: 'include', // Include cookies for session handling
       });
       
       const data = await response.json();
