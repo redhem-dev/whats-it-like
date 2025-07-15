@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
+import { API_URL } from '../services/api';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import UserHoverCard from '../components/UserHoverCard';
@@ -368,7 +369,7 @@ const SinglePostPage = () => {
         return;
       }
       
-      const response = await fetch(`http://localhost:3000/api/posts/${postId}/replies`, {
+      const response = await fetch(`${API_URL}/api/posts/${postId}/replies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -423,7 +424,7 @@ const SinglePostPage = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:3000/api/posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/posts/${postId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

@@ -353,7 +353,7 @@ const Dashboard = () => {
     try {
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`http://localhost:3000/api/posts/${postId}/vote`, {
+      const response = await fetch(`${API_URL}/api/posts/${postId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -405,7 +405,7 @@ const Dashboard = () => {
         return;
       }
       
-      const response = await fetch(`http://localhost:3000/api/posts/${postId}`, {
+      const response = await fetch(`${API_URL}/api/posts/${postId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

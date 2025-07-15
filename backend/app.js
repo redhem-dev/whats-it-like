@@ -7,6 +7,9 @@ const connectDB = require('./config/database');
 require('dotenv').config();
 require('./config/auth');
 
+// Define frontend URL based on environment
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 // Import routes
 const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
@@ -28,7 +31,9 @@ app.use(express.json());
 
 // Configure CORS to allow credentials (cookies) for frontend-backend communication
 app.use(cors({
-  origin: 'http://localhost:5173', // Frontend URL
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'https://your-vercel-frontend-url.com'
+    : 'http://localhost:5173', // Frontend URL
   credentials: true, // Allow cookies to be sent
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -73,7 +78,7 @@ app.get('/auth/google',
 );
 
 app.get('/google/callback', 
-  passport.authenticate('google', { failureRedirect: '/' }),
+  passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/signin` }),
   (req, res) => {
     // User authenticated via Google OAuth
     
@@ -103,11 +108,11 @@ app.get('/google/callback',
       req.session.save(err => {
         if (err) {
           console.error('Error saving session:', err);
-          return res.redirect('http://localhost:5173/signup?error=session_error');
+          return res.redirect(`${FRONTEND_URL}/signup?error=session_error`);
         }
         
         // Redirect to ID verification page on the frontend
-        return res.redirect(`http://localhost:5173/verify-id?token=${tempToken}&google=true`);
+        return res.redirect(`${FRONTEND_URL}/verify-id?token=${tempToken}&google=true`);
       });
     } else {
       // If user already exists in DB, generate JWT token
@@ -120,7 +125,7 @@ app.get('/google/callback',
       
       // Redirect to frontend with token
 
-      return res.redirect(`http://localhost:5173/auth-callback?token=${token}&redirect=/dashboard`);
+      return res.redirect(`${FRONTEND_URL}/auth-callback?token=${token}&redirect=/dashboard`);
     }
   }
 );
@@ -136,10 +141,10 @@ app.get('/protected', isLoggedIn, (req, res) => {
     );
 
     // Redirect to frontend with the token
-    res.redirect(`http://localhost:5173/auth-callback?token=${token}&redirect=/dashboard`);
+    res.redirect(`${FRONTEND_URL}/auth-callback?token=${token}&redirect=/dashboard`);
   } catch (error) {
     console.error('Google auth error:', error);
-    res.redirect('http://localhost:5173/signin?error=auth_failed');
+    res.redirect(`${FRONTEND_URL}/signin?error=auth_failed`);
   }
 });
 

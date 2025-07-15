@@ -7,6 +7,9 @@ const { hashIdNumber } = require('../utils/idHasher');
 const { sendVerificationCode } = require('../services/emailService');
 const { updateUserReputation } = require('../services/reputationService');
 
+// Define frontend URL based on environment
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 // Default JWT secret if environment variable is not set
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -631,7 +634,7 @@ exports.googleAuth = passport.authenticate('google', {
  * @route GET /api/auth/google/callback
  */
 exports.googleAuthCallback = [
-  passport.authenticate('google', { session: false, failureRedirect: '/signin' }),
+  passport.authenticate('google', { session: false, failureRedirect: `${FRONTEND_URL}/signin` }),
   (req, res) => {
     try {
       // Generate JWT token for the authenticated Google user
@@ -641,11 +644,14 @@ exports.googleAuthCallback = [
         { expiresIn: '7d' }
       );
 
+      // Get frontend URL from env var or use localhost in development
+      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+      
       // Redirect to frontend dashboard with token
-      res.redirect(`http://localhost:5173/auth-callback?token=${token}&redirect=/dashboard`);
+      res.redirect(`${FRONTEND_URL}/auth-callback?token=${token}&redirect=/dashboard`);
     } catch (error) {
       console.error('Google auth callback error:', error);
-      res.redirect('/signin?error=google_auth_failed');
+      res.redirect(`${FRONTEND_URL}/signin?error=google_auth_failed`);
     }
   }
 ];
