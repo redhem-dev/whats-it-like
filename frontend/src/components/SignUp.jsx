@@ -78,8 +78,24 @@ const SignUp = () => {
           throw new Error(result.error || 'Failed to sign up');
         }
         
-        // Set a flag in localStorage to indicate a new signup that needs verification
+        // Store essential verification data
         localStorage.setItem('completedSignup', 'true');
+        localStorage.setItem('pendingUserId', result.user?.id || result.user?._id);
+        localStorage.setItem('pendingEmail', email);
+        
+        // Store minimal user data for access during verification
+        const userData = {
+          id: result.user?.id || result.user?._id,
+          email: email,
+          firstName: firstName,
+          lastName: lastName,
+          emailVerified: false
+        };
+        localStorage.setItem('userData', JSON.stringify(userData));
+        
+        if (result.token) {
+          localStorage.setItem('authToken', result.token);
+        }
         
         // Successful signup, redirect to email verification
         navigate("/verify-email");

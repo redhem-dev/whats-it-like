@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { API_URL } from '../services/api';
+import { verifyEmail, resendVerificationCode } from '../services/authService';
 
 const EmailVerification = () => {
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -21,14 +21,42 @@ const EmailVerification = () => {
     const userIdParam = params.get('userId') || localStorage.getItem('pendingUserId');
     const emailParam = params.get('email') || localStorage.getItem('pendingEmail');
     
-    if (userIdParam) {
-      setUserId(userIdParam);
-      localStorage.setItem('pendingUserId', userIdParam);
+    // Try to get data from multiple sources
+    let foundUserId = userIdParam;
+    let foundEmail = emailParam;
+    
+    // If not found in URL params or pendingUserId/pendingEmail, try userData
+    if (!foundUserId || !foundEmail) {
+      try {
+        const storedUserData = localStorage.getItem('userData');
+        if (storedUserData) {
+          const userData = JSON.parse(storedUserData);
+          if (!foundUserId && userData.id) {
+            foundUserId = userData.id;
+          }
+          if (!foundEmail && userData.email) {
+            foundEmail = userData.email;
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing user data from localStorage', e);
+      }
     }
     
-    if (emailParam) {
-      setEmail(emailParam);
-      localStorage.setItem('pendingEmail', emailParam);
+    if (foundUserId) {
+      setUserId(foundUserId);
+      localStorage.setItem('pendingUserId', foundUserId);
+      console.log('Using user ID:', foundUserId);
+    } else {
+      console.warn('No user ID found for verification');
+    }
+    
+    if (foundEmail) {
+      setEmail(foundEmail);
+      localStorage.setItem('pendingEmail', foundEmail);
+      console.log('Using email:', foundEmail);
+    } else {
+      console.warn('No email found for verification');
     }
   }, [location]);
   
@@ -82,23 +110,8 @@ const EmailVerification = () => {
     setError(null);
     
     try {
-      const response = await fetch(`${API_URL}/api/auth/verify-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          email,
-          code: verificationCode
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to verify code');
-      }
+      // Use the authService to verify email with proper headers handling
+      const data = await verifyEmail(userId, email, verificationCode);
       
       // Verification successful
       setSuccess(true);
@@ -125,6 +138,7 @@ const EmailVerification = () => {
         // Clean up pending verification data
         localStorage.removeItem('pendingUserId');
         localStorage.removeItem('pendingEmail');
+        localStorage.removeItem('completedSignup'); // Also clear signup flag
         
         // Force reload of the app to ensure the token is properly applied
         setTimeout(() => {
@@ -149,22 +163,8 @@ const EmailVerification = () => {
     setError(null);
     
     try {
-      const response = await fetch(`${API_URL}/api/auth/resend-verification`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          email
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to resend code');
-      }
+      // Use the authService for resending verification code
+      const data = await resendVerificationCode(userId, email);
       
       // Start countdown for resend button (2 minutes)
       setCountdown(120);
@@ -181,6 +181,7 @@ const EmailVerification = () => {
         });
       }, 1000);
       
+      // Clean up timer on unmount
       return () => clearInterval(timer);
     } catch (err) {
       setError(err.message || 'Failed to resend verification code');
