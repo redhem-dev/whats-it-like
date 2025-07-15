@@ -300,6 +300,15 @@ exports.storeVerificationData = (req, extractedData, country) => {
 exports.verifyUserData = async (req, res) => {
   try {
     // Verification process started
+    // Check environment for production-specific handling
+    const isProd = process.env.NODE_ENV === 'production';
+    console.log(`Environment: ${isProd ? 'production' : 'development'}`);
+    
+    // Ensure global cache exists to prevent errors
+    if (typeof global.verificationCache === 'undefined') {
+      console.log('Initializing missing global verification cache');
+      global.verificationCache = {};
+    }
     
     const { firstName, lastName, idNumber: rawIdNumber, country: inputCountry } = req.body;
     
@@ -338,50 +347,74 @@ exports.verifyUserData = async (req, res) => {
     const sessionId = req.session.id;
     console.log('Current session ID:', sessionId);
     
-    // Look for verification data in both session and global cache
+    // Look for verification data in different sources based on environment
     let sessionData = null;
     let dataSource = 'none';
     
-    // Check session first
-    if (req.session.verificationData) {
-      console.log('Found verification data in session');
-      sessionData = req.session.verificationData;
-      dataSource = 'session';
-    } 
-    // Check global cache as backup
-    else if (global.verificationCache[sessionId]) {
-      console.log('Found verification data in global cache');
-      // If found in cache but not in session, restore it to session
-      req.session.verificationData = global.verificationCache[sessionId];
-      sessionData = req.session.verificationData;
-      dataSource = 'cache';
+    // In production, prioritize request body data to avoid session/cache issues
+    if (isProd && req.body.extractedDataBackup) {
+      console.log('PRODUCTION: Using extracted data backup from frontend request');
       
-      // Force session save to persist the restored data
+      // Create session data from the backup
+      sessionData = {
+        extractedData: req.body.extractedDataBackup,
+        timestamp: Date.now(),
+        country: inputCountry || req.body.extractedDataBackup?.country || 'BA'
+      };
+      
+      // Still save to session for consistency
+      req.session.verificationData = sessionData;
+      dataSource = 'production-frontend-backup';
+      
+      // Force save the session
       req.session.save(err => {
-        if (err) console.error('Error saving restored session data:', err);
-        else console.log('Restored session data saved successfully');
+        if (err) console.error('Error saving production session with frontend backup data:', err);
+        else console.log('Production frontend backup data saved to session successfully');
       });
     }
-    // If still no data, try to find any recent verification data for this user
-    else if (req.user) {
-      const userId = req.user.userId;
-      console.log('Checking for any verification data for user:', userId);
-      
-      // Look through cache for any entry that might belong to this user
-      const now = Date.now();
-      for (const [cachedSessionId, cacheData] of Object.entries(global.verificationCache)) {
-        // Skip expired entries
-        if (cacheData.expires < now) continue;
+    // In development or if no backup provided, follow the normal flow
+    else {
+      // Check session first
+      if (req.session.verificationData) {
+        console.log('Found verification data in session');
+        sessionData = req.session.verificationData;
+        dataSource = 'session';
+      } 
+      // Check global cache as backup (only in development)
+      else if (!isProd && global.verificationCache && global.verificationCache[sessionId]) {
+        console.log('Found verification data in global cache');
+        // If found in cache but not in session, restore it to session
+        req.session.verificationData = global.verificationCache[sessionId];
+        sessionData = req.session.verificationData;
+        dataSource = 'cache';
         
-        // If we find a cache entry that's not expired, use it
-        sessionData = cacheData;
-        req.session.verificationData = cacheData;
-        dataSource = 'user-cache';
-        console.log('Using verification data from another session for this user');
+        // Force session save to persist the restored data
+        req.session.save(err => {
+          if (err) console.error('Error saving restored session data:', err);
+          else console.log('Restored session data saved successfully');
+        });
+      }
+      // If still no data, try to find any recent verification data for this user (dev only)
+      else if (!isProd && req.user && global.verificationCache) {
+        const userId = req.user.userId;
+        console.log('Checking for any verification data for user:', userId);
         
-        // Force session save
-        req.session.save();
-        break;
+        // Look through cache for any entry that might belong to this user
+        const now = Date.now();
+        for (const [cachedSessionId, cacheData] of Object.entries(global.verificationCache)) {
+          // Skip expired entries
+          if (cacheData.expires < now) continue;
+          
+          // If we find a cache entry that's not expired, use it
+          sessionData = cacheData;
+          req.session.verificationData = cacheData;
+          dataSource = 'user-cache';
+          console.log('Using verification data from another session for this user');
+          
+          // Force session save
+          req.session.save();
+          break;
+        }
       }
     }
     
@@ -398,10 +431,14 @@ exports.verifyUserData = async (req, res) => {
       
       // Save this data to session and cache for future requests
       req.session.verificationData = sessionData;
-      global.verificationCache[sessionId] = {
-        ...sessionData,
-        expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours expiry
-      };
+      
+      // Only use global cache in development
+      if (!isProd && global.verificationCache) {
+        global.verificationCache[sessionId] = {
+          ...sessionData,
+          expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours expiry
+        };
+      }
       
       dataSource = 'frontend-backup';
       
