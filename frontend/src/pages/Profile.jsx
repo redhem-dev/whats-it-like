@@ -426,7 +426,7 @@ const Profile = ({ user: propsUser }) => {
                       <div key={post._id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                         <div className="flex items-start justify-between">
                           <div>
-                            <Link to={`/post/${post._id}`} className="block">
+                            <Link to={`/post/${post.postId}`} className="block">
                               <h3 className="font-medium hover:text-blue-600 cursor-pointer">{post.title}</h3>
                             </Link>
                             <div className="text-sm text-gray-500 mt-1">
