@@ -25,8 +25,6 @@ passport.use(new GoogleStrategy({
         // If user already exists, authenticate them
         return done(null, user);
       } else {
-        // Instead of creating a user immediately, create a temporary user object
-        // that will be stored in the session for ID verification
         const tempGoogleUser = {
           id: `temp_${profile.id}`, // Add an id property for serialization
           googleId: profile.id,
