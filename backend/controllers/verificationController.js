@@ -297,319 +297,6 @@ exports.storeVerificationData = (req, extractedData, country) => {
  * Uses enhanced verification to strictly validate that user input matches OCR data
  * @route POST /api/verify/match-data
  */
-exports.verifyUserData = async (req, res) => {
-  try {
-    // Verification process started
-    // Check environment for production-specific handling
-    const isProd = process.env.NODE_ENV === 'production';
-    console.log(`Environment: ${isProd ? 'production' : 'development'}`);
-    
-    // Ensure global cache exists to prevent errors
-    if (typeof global.verificationCache === 'undefined') {
-      console.log('Initializing missing global verification cache');
-      global.verificationCache = {};
-    }
-    
-    const { firstName, lastName, idNumber: rawIdNumber, country: inputCountry } = req.body;
-    
-    // Validate input - collect missing fields for better error message
-    const missingFields = [];
-    if (!firstName) missingFields.push('firstName');
-    if (!lastName) missingFields.push('lastName');
-    if (!rawIdNumber) missingFields.push('idNumber');
-    
-    // Bosnian ID validation
-    
-    if (missingFields.length > 0) {
-      console.log(`Match data validation failed. Missing fields: ${missingFields.join(', ')}`);
-      return res.status(400).json({ 
-        success: false,
-        message: `Missing required fields: ${missingFields.join(', ')} are required`,
-        details: 'All fields must be provided for ID verification'
-      });
-    }
-    
-    // Bosnian ID validation
-    let idNumber = rawIdNumber;
-    
-    // Validate Bosnian ID format
-    if (idNumber) {
-      // Bosnia allows alphanumeric IDs
-      if (!/^[0-9A-Z]{7,12}$/.test(idNumber)) {
-        console.error('Invalid Bosnian ID format:', idNumber);
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid Bosnian ID format. ID must be 7-12 alphanumeric characters.'
-        });
-      }
-    }
-    
-    const sessionId = req.session.id;
-    console.log('Current session ID:', sessionId);
-    
-    // Look for verification data in different sources based on environment
-    let sessionData = null;
-    let dataSource = 'none';
-    
-    // In production, prioritize request body data to avoid session/cache issues
-    if (isProd && req.body.extractedDataBackup) {
-      console.log('PRODUCTION: Using extracted data backup from frontend request');
-      
-      // Create session data from the backup
-      sessionData = {
-        extractedData: req.body.extractedDataBackup,
-        timestamp: Date.now(),
-        country: inputCountry || req.body.extractedDataBackup?.country || 'BA'
-      };
-      
-      // Still save to session for consistency
-      req.session.verificationData = sessionData;
-      dataSource = 'production-frontend-backup';
-      
-      // Force save the session
-      req.session.save(err => {
-        if (err) console.error('Error saving production session with frontend backup data:', err);
-        else console.log('Production frontend backup data saved to session successfully');
-      });
-    }
-    // In development or if no backup provided, follow the normal flow
-    else {
-      // Check session first
-      if (req.session.verificationData) {
-        console.log('Found verification data in session');
-        sessionData = req.session.verificationData;
-        dataSource = 'session';
-      } 
-      // Check global cache as backup (only in development)
-      else if (!isProd && global.verificationCache && global.verificationCache[sessionId]) {
-        console.log('Found verification data in global cache');
-        // If found in cache but not in session, restore it to session
-        req.session.verificationData = global.verificationCache[sessionId];
-        sessionData = req.session.verificationData;
-        dataSource = 'cache';
-        
-        // Force session save to persist the restored data
-        req.session.save(err => {
-          if (err) console.error('Error saving restored session data:', err);
-          else console.log('Restored session data saved successfully');
-        });
-      }
-      // If still no data, try to find any recent verification data for this user (dev only)
-      else if (!isProd && req.user && global.verificationCache) {
-        const userId = req.user.userId;
-        console.log('Checking for any verification data for user:', userId);
-        
-        // Look through cache for any entry that might belong to this user
-        const now = Date.now();
-        for (const [cachedSessionId, cacheData] of Object.entries(global.verificationCache)) {
-          // Skip expired entries
-          if (cacheData.expires < now) continue;
-          
-          // If we find a cache entry that's not expired, use it
-          sessionData = cacheData;
-          req.session.verificationData = cacheData;
-          dataSource = 'user-cache';
-          console.log('Using verification data from another session for this user');
-          
-          // Force session save
-          req.session.save();
-          break;
-        }
-      }
-    }
-    
-    // If we have extractedDataBackup from frontend, use it as a last resort
-    if (!sessionData && req.body.extractedDataBackup) {
-      console.log('Using extracted data backup from frontend request');
-      
-      // Create session data from the backup
-      sessionData = {
-        extractedData: req.body.extractedDataBackup,
-        timestamp: Date.now(),
-        country: inputCountry || req.body.extractedDataBackup?.country || 'BA'
-      };
-      
-      // Save this data to session and cache for future requests
-      req.session.verificationData = sessionData;
-      
-      // Only use global cache in development
-      if (!isProd && global.verificationCache) {
-        global.verificationCache[sessionId] = {
-          ...sessionData,
-          expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours expiry
-        };
-      }
-      
-      dataSource = 'frontend-backup';
-      
-      // Force save the session
-      req.session.save(err => {
-        if (err) console.error('Error saving session with frontend backup data:', err);
-        else console.log('Frontend backup data saved to session successfully');
-      });
-    }
-    
-    // If still no data found, return error
-    if (!sessionData) {
-      console.error('No verificationData found in session, cache or request. Available session data:', 
-                  JSON.stringify(req.session, (k, v) => k === 'cookie' ? '[Cookie Object]' : v));
-      
-      return res.status(400).json({ 
-        success: false,
-        message: 'No ID verification data found. Please upload your ID first.',
-        sessionId: req.session.id // Include session ID for debugging
-      });
-    }
-    
-    console.log(`Verification data found (source: ${dataSource}):`, 
-               JSON.stringify(sessionData, null, 2).substring(0, 200) + '...');
-    
-    // Extract data with fallbacks
-    const extractedData = sessionData.extractedData || sessionData;
-    const country = extractedData.country || 'BA';
-    
-    // Only check for Google session if we're in a Google registration flow
-    const isGoogleFlow = req.path.includes('google') || req.body.isGoogleFlow;
-    
-    if (isGoogleFlow) {
-      const hasSessionInfo = !!req.session.googleAuthInfo;
-      const hasVerification = !!req.session.googleVerification;
-      const userData = req.session.googleAuthInfo || {};
-      
-      if (!hasSessionInfo) {
-        return res.status(401).json({
-          success: false,
-          message: 'No Google session found for Google registration flow'
-        });
-      }
-      
-      // For Google flow, verify the verification data matches
-      if (hasVerification) {
-        const verificationData = req.session.googleVerification;
-        
-        // Check if the verification data matches the current request
-        if (verificationData.firstName !== firstName || 
-            verificationData.lastName !== lastName ||
-            verificationData.idNumber !== idNumber) {
-          return res.status(400).json({
-            success: false,
-            message: 'Verification data does not match session data'
-          });
-        }
-      }
-    }
-    
-    console.log('EXTRACTED DATA FROM SESSION:', extractedData);
-    
-    console.log('Verifying user data against OCR data:');
-    console.log('User input:', { firstName, lastName, idNumber });
-    console.log('OCR data:', extractedData);
-
-    // Ensure the OCR data is properly formatted for verification
-    // This is critical for proper verification
-    const ocrDataToVerify = {
-      fullName: extractedData.fullName,
-      idNumber: extractedData.idNumber,
-      country: country
-    };
-    
-    console.log('Formatted OCR data for verification:', ocrDataToVerify);
-    
-    // Normalize ID numbers for comparison
-    const normalizeId = (id) => {
-      if (!id) return '';
-      return String(id).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    };
-    
-    const normalizedInputId = normalizeId(idNumber);
-    const normalizedOcrId = normalizeId(extractedData.idNumber);
-    
-    console.log('Normalized IDs for comparison:', {
-      input: normalizedInputId,
-      ocr: normalizedOcrId
-    });
-    
-    // Check if the normalized IDs match
-    const idMatchResult = normalizedInputId === normalizedOcrId;
-    const nameMatchResult = 
-      firstName.toLowerCase() === extractedData.firstName.toLowerCase() &&
-      lastName.toLowerCase() === extractedData.lastName.toLowerCase();
-    
-    const isVerified = idMatchResult && nameMatchResult;
-    
-    // Store verification status in session
-    req.session.isVerified = isVerified;
-    req.session.verificationStatus = {
-      verified: isVerified,
-      timestamp: Date.now(),
-      idMatch: idMatchResult,
-      nameMatch: nameMatchResult,
-      country: country
-    };
-    
-    // Prepare response message
-    let message;
-    if (isVerified) {
-      message = 'ID verification successful. Please check your email for verification code.';
-      
-      // Store successful verification in session
-      req.session.verifiedIdInfo = {
-        idNumber: idNumber,
-        country: country,
-        firstName: extractedData.firstName,
-        lastName: extractedData.lastName,
-        email: req.body.email // Store email for verification
-      };
-      
-      // Set flag to indicate email verification is needed
-      req.session.needsEmailVerification = true;
-    } else {
-      if (!idMatchResult) {
-        message = 'ID verification failed. The ID number provided does not match your ID card.';
-      } else if (!nameMatchResult) {
-        message = 'Name verification failed. The name provided does not match your ID card.';
-      } else {
-        message = 'Verification failed. Please check that your information matches your ID card.';
-      }
-    }
-
-    // If ID verification was successful, trigger email verification process
-    if (isVerified && req.body.email) {
-      try {
-        // Store the email in the session for the next step
-        req.session.verifiedEmail = req.body.email;
-        
-        // Return the verification result with nextStep indicating email verification
-        return res.json({
-          success: true,
-          verified: isVerified,
-          nameMatch: nameMatchResult,
-          idMatch: idMatchResult,
-          country: country,
-          message: message,
-          nextStep: 'email_verification',
-          extractedData: extractedData
-        });
-      } catch (emailError) {
-        console.error('Error setting up email verification:', emailError);
-      }
-    }
-    
-    // Return the verification result
-    return res.json({
-      success: true,
-      verified: isVerified,
-      nameMatch: nameMatchResult,
-      idMatch: idMatchResult,
-      country: country,
-      message: message,
-      extractedData: extractedData
-    });
-  } catch (error) {
-    console.error('Error verifying user data:', error);
-    return res.status(500).json({ success: false, message: 'Error verifying user data' });
-  }
-};
 
 /**
  * Check verification status
@@ -871,3 +558,294 @@ exports.checkGoogleSession = (req, res) => {
 };
 
 // All functions are now exported inline
+/**
+ * Verify user provided data against extracted ID card data
+ * Uses enhanced verification to strictly validate that user input matches OCR data
+ * @route POST /api/verify/match-data
+ */
+exports.verifyUserData = async (req, res) => {
+  try {
+    // Log request info safely
+    console.log('verifyUserData request received');
+    console.log('Request body keys:', Object.keys(req.body || {}));
+    
+    // Check environment for production-specific handling
+    const isProd = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'prod';
+    console.log(`Environment: ${isProd ? 'production' : 'development'}`);
+    
+    // Safety check for request body
+    if (!req.body) {
+      console.error('Request body is missing');
+      return res.status(400).json({
+        success: false,
+        message: 'Request body is required'
+      });
+    }
+    
+    // Ensure global cache exists in development (not used in production)
+    if (!isProd && typeof global.verificationCache === 'undefined') {
+      console.log('Initializing global verification cache');
+      global.verificationCache = {};
+    }
+    
+    // Safety check for session
+    if (!req.session) {
+      console.warn('Session object is undefined, creating fallback');
+      req.session = { id: 'fallback-' + Date.now() };
+    }
+    
+    const { firstName, lastName, idNumber: rawIdNumber, country: inputCountry } = req.body;
+    
+    // Validate input - collect missing fields for better error message
+    const missingFields = [];
+    if (!firstName) missingFields.push('firstName');
+    if (!lastName) missingFields.push('lastName');
+    if (!rawIdNumber) missingFields.push('idNumber');
+    
+    if (missingFields.length > 0) {
+      console.log(`Match data validation failed. Missing fields: ${missingFields.join(', ')}`);
+      return res.status(400).json({ 
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')} are required`,
+        details: 'All fields must be provided for ID verification'
+      });
+    }
+    
+    // ID validation based on country
+    let idNumber = rawIdNumber;
+    const country = inputCountry || (req.body.extractedDataBackup?.country) || 'BA';
+    
+    // Validate ID format based on country
+    if (idNumber) {
+      if (country === 'BA') {
+        // Bosnia allows alphanumeric IDs
+        if (!/^[0-9A-Z]{7,12}$/.test(idNumber)) {
+          console.error('Invalid Bosnian ID format:', idNumber);
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid Bosnian ID format. ID must be 7-12 alphanumeric characters.'
+          });
+        }
+      } else if (country === 'RS' || country === 'HR') {
+        // Serbia and Croatia require numeric IDs
+        if (!/^\d{9,13}$/.test(idNumber)) {
+          console.error(`Invalid ${country} ID format:`, idNumber);
+          return res.status(400).json({
+            success: false,
+            message: `Invalid ${country} ID format. ID must be 9-13 digits.`
+          });
+        }
+      }
+    }
+    
+    // Get session ID safely with fallback
+    const sessionId = req.session?.id || `fallback-${Date.now()}`;
+    console.log('Current session ID:', sessionId);
+    
+    // Retrieve verification data with environment-specific handling
+    let sessionData = null;
+    let dataSource = 'none';
+    
+    // PRODUCTION: Always prioritize request body data
+    if (isProd && req.body.extractedDataBackup) {
+      console.log('PRODUCTION: Using extracted data from request body');
+      
+      sessionData = {
+        extractedData: req.body.extractedDataBackup || {},
+        timestamp: Date.now(),
+        country: country
+      };
+      
+      dataSource = 'production-frontend-data';
+      
+      // Still try to save to session for consistency if possible
+      if (req.session && typeof req.session.save === 'function') {
+        try {
+          req.session.verificationData = sessionData;
+          req.session.save();
+        } catch (err) {
+          console.error('Session save error in production:', err);
+        }
+      }
+    }
+    // DEVELOPMENT: Try session first, then cache, then request body
+    else {
+      // Try session
+      if (req.session && req.session.verificationData) {
+        console.log('Using verification data from session');
+        sessionData = req.session.verificationData;
+        dataSource = 'session';
+      }
+      // Try global cache (dev only)
+      else if (!isProd && global.verificationCache && global.verificationCache[sessionId]) {
+        console.log('Using verification data from global cache');
+        sessionData = global.verificationCache[sessionId];
+        dataSource = 'global-cache';
+        
+        // Save to session for future use
+        if (req.session && typeof req.session.save === 'function') {
+          try {
+            req.session.verificationData = sessionData;
+            req.session.save();
+          } catch (err) {
+            console.error('Error saving cache data to session:', err);
+          }
+        }
+      }
+      // Finally try request body backup
+      else if (req.body.extractedDataBackup) {
+        console.log('Using extracted data backup from request');
+        sessionData = {
+          extractedData: req.body.extractedDataBackup || {},
+          timestamp: Date.now(),
+          country: country
+        };
+        
+        dataSource = 'request-body-backup';
+        
+        // Save for future use
+        if (req.session && typeof req.session.save === 'function') {
+          try {
+            req.session.verificationData = sessionData;
+            req.session.save();
+          } catch (err) {
+            console.error('Error saving data to session:', err);
+          }
+        }
+      }
+    }
+    
+    // If still no data found, return error
+    if (!sessionData) {
+      console.error('No verification data found in any source');
+      return res.status(400).json({ 
+        success: false,
+        message: 'No ID verification data found. Please upload your ID first.',
+        sessionId: req.session?.id || 'unknown'
+      });
+    }
+    
+    // Process the verification data
+    console.log(`Processing verification data from source: ${dataSource}`);
+    
+    // Extract data safely with fallbacks
+    let extractedData = {};
+    
+    // Try to get data from the correct location
+    if (sessionData.extractedData && typeof sessionData.extractedData === 'object') {
+      extractedData = sessionData.extractedData;
+    } else {
+      extractedData = sessionData;
+    }
+    
+    // Special handling for Google flow if applicable
+    const isGoogleFlow = req.path?.includes('google') || req.body?.isGoogleFlow === true;
+    
+    if (isGoogleFlow && req.session) {
+      const hasSessionInfo = !!req.session.googleAuthInfo;
+      const hasVerification = !!req.session.googleVerification;
+      
+      if (!hasSessionInfo) {
+        return res.status(401).json({
+          success: false,
+          message: 'No Google session found for Google registration flow'
+        });
+      }
+      
+      if (hasVerification) {
+        const verificationData = req.session.googleVerification;
+        
+        // Check if the verification data matches the current request
+        if (verificationData.firstName !== firstName || 
+            verificationData.lastName !== lastName ||
+            verificationData.idNumber !== idNumber) {
+          
+          return res.status(400).json({
+            success: false,
+            message: 'Verification data does not match session data'
+          });
+        }
+      }
+    }
+    
+    console.log('Verifying user data against OCR data');
+    console.log('User input:', { firstName, lastName, idNumber });
+    
+    // Normalize ID numbers for comparison
+    const normalizeId = (id) => {
+      if (!id) return '';
+      return String(id).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    };
+    
+    const normalizedInputId = normalizeId(idNumber);
+    const normalizedOcrId = normalizeId(extractedData.idNumber);
+    
+    console.log('Normalized IDs for comparison:', {
+      input: normalizedInputId,
+      ocr: normalizedOcrId
+    });
+    
+    // Check if the normalized IDs match
+    const idMatchResult = normalizedInputId === normalizedOcrId;
+    
+    // Name matching - handle cases where first/last name might be switched
+    // or stored differently in the OCR data
+    let nameMatchResult = false;
+    
+    // Try different name matching strategies
+    if (extractedData.firstName && extractedData.lastName) {
+      // Direct match
+      nameMatchResult = 
+        firstName.toLowerCase() === extractedData.firstName.toLowerCase() &&
+        lastName.toLowerCase() === extractedData.lastName.toLowerCase();
+        
+      // If that fails, try full name match (in case OCR parsed the name differently)
+      if (!nameMatchResult && extractedData.fullName) {
+        const inputFullName = `${firstName} ${lastName}`.toLowerCase();
+        const ocrFullName = extractedData.fullName.toLowerCase();
+        nameMatchResult = inputFullName === ocrFullName;
+      }
+    } else if (extractedData.fullName) {
+      // Try to match against full name if that's all we have
+      const inputFullName = `${firstName} ${lastName}`.toLowerCase();
+      const ocrFullName = extractedData.fullName.toLowerCase();
+      nameMatchResult = ocrFullName.includes(inputFullName) || inputFullName.includes(ocrFullName);
+    }
+    
+    // Final verification result
+    const isVerified = idMatchResult && nameMatchResult;
+    
+    // Store verification status in session for future reference
+    req.session.isVerified = isVerified;
+    req.session.verificationStatus = {
+      verified: isVerified,
+      timestamp: Date.now(),
+      idMatch: idMatchResult,
+      nameMatch: nameMatchResult,
+      dataSource: dataSource
+    };
+    
+    // Force session save to ensure verification status persists
+    if (typeof req.session.save === 'function') {
+      req.session.save();
+    }
+    
+    // Return verification result
+    return res.json({
+      success: true,
+      verified: isVerified,
+      idMatch: idMatchResult,
+      nameMatch: nameMatchResult,
+      message: isVerified ? 
+        'User data successfully verified against ID' : 
+        'User data does not match ID information'
+    });
+  } catch (error) {
+    console.error('Error in verification process:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error during verification process',
+      error: error.message
+    });
+  }
+};
