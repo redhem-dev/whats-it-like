@@ -15,15 +15,35 @@ import AuthCallback from "./components/AuthCallback";
 import { LocationProvider } from "./contexts/LocationContext";
 import "./App.css";
 
-// ProtectedRoute component to handle authentication
+// ProtectedRoute component to handle authentication and verification
 const ProtectedRoute = ({ children }) => {
   // Check for authentication token in localStorage
   const isAuthenticated = localStorage.getItem('authToken') !== null;
   const location = useLocation();
+  
+  // Get user data to check email verification status
+  const userData = localStorage.getItem('userData');
+  let emailVerified = false;
+  
+  if (userData) {
+    try {
+      const parsedUserData = JSON.parse(userData);
+      emailVerified = parsedUserData.emailVerified === true;
+    } catch (e) {
+      console.error('Failed to parse user data from localStorage', e);
+    }
+  }
 
   if (!isAuthenticated) {
     // Redirect to sign in page with return url
     return <Navigate to="/signin" state={{ from: location }} replace />;
+  }
+  
+  // If authenticated but email not verified, redirect to verification page
+  // Skip this check for the email verification page itself
+  if (!emailVerified && !location.pathname.includes('/verify-email')) {
+    console.log('User not verified, redirecting to verification page');
+    return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
   return children;

@@ -78,8 +78,8 @@ const SignUp = () => {
           throw new Error(result.error || 'Failed to sign up');
         }
         
-        // Successful signup, redirect to dashboard
-        navigate("/dashboard");
+        // Successful signup, redirect to email verification
+        navigate("/verify-email");
       } catch (err) {
         console.error('Signup error:', err);
         setError(err.message || "Failed to sign up");

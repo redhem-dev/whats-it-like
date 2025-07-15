@@ -301,7 +301,7 @@ exports.verifyUserData = async (req, res) => {
   try {
     // Verification process started
     
-    const { firstName, lastName, idNumber: rawIdNumber } = req.body;
+    const { firstName, lastName, idNumber: rawIdNumber, country: inputCountry } = req.body;
     
     // Validate input - collect missing fields for better error message
     const missingFields = [];
@@ -386,14 +386,14 @@ exports.verifyUserData = async (req, res) => {
     }
     
     // If we have extractedDataBackup from frontend, use it as a last resort
-    if (!sessionData && extractedDataBackup) {
+    if (!sessionData && req.body.extractedDataBackup) {
       console.log('Using extracted data backup from frontend request');
       
       // Create session data from the backup
       sessionData = {
-        extractedData: extractedDataBackup,
+        extractedData: req.body.extractedDataBackup,
         timestamp: Date.now(),
-        country: country || 'BA'
+        country: inputCountry || req.body.extractedDataBackup?.country || 'BA'
       };
       
       // Save this data to session and cache for future requests
