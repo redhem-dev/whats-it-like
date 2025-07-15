@@ -56,9 +56,28 @@ app.use(express.json());
 
 // Configure CORS to allow credentials (cookies) for frontend-backend communication
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-vercel-frontend-url.com'
-    : 'http://localhost:5173', // Frontend URL
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'https://whats-it-like.vercel.app',
+      'https://whats-it-like-ctzwv0gdp-contreebutes-projects.vercel.app'
+    ];
+    
+    // If FRONTEND_URL is set in environment, add it to allowed origins
+    if (process.env.FRONTEND_URL) {
+      allowedOrigins.push(process.env.FRONTEND_URL);
+    }
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true, // Allow cookies to be sent
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
