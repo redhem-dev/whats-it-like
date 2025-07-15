@@ -353,26 +353,40 @@ exports.voteOnPost = async (req, res) => {
     const { latitude, longitude } = req.body;
     let locationData;
     
-    // Check if we're in development mode with localhost
-    const clientIP = locationService.getClientIP(req);
-    const isDevelopment = process.env.NODE_ENV !== 'production';
-    const isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(clientIP);
-    
-    if (isDevelopment && isLocalhost) {
-      // In development mode with localhost IP, bypass location verification
-      console.log('Development mode: Bypassing location verification for voting');
+    try {
+      // Check if we're in development mode with localhost
+      const clientIP = locationService.getClientIP(req);
+      console.log(`Client IP for vote request: ${clientIP}`);
+      
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      const isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(clientIP);
+      
+      if (isDevelopment && isLocalhost) {
+        // In development mode with localhost IP, bypass location verification
+        console.log('Development mode: Bypassing location verification for voting');
+        locationData = {
+          country: locationService.ALLOWED_COUNTRY_CODE,
+          city: 'Development',
+          source: 'development-bypass',
+          allowed: true
+        };
+      } else if (latitude && longitude) {
+        // Verify using coordinates from browser geolocation
+        locationData = await locationService.verifyCoordinates(latitude, longitude);
+      } else {
+        // Fallback to IP-based verification
+        locationData = await locationService.verifyIPLocation(clientIP);
+      }
+    } catch (error) {
+      console.error('Location verification error:', error.message);
+      // In production, default to allowing votes if location service fails
       locationData = {
         country: locationService.ALLOWED_COUNTRY_CODE,
-        city: 'Development',
-        source: 'development-bypass',
-        allowed: true
+        city: 'Unknown (Error)',
+        source: 'error-fallback',
+        allowed: true,
+        error: error.message
       };
-    } else if (latitude && longitude) {
-      // Verify using coordinates from browser geolocation
-      locationData = await locationService.verifyCoordinates(latitude, longitude);
-    } else {
-      // Fallback to IP-based verification
-      locationData = await locationService.verifyIPLocation(clientIP);
     }
     
     // Check if user is in allowed country (Bosnia and Herzegovina)

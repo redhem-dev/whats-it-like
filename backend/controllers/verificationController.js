@@ -260,6 +260,8 @@ exports.uploadIdCard = async (req, res) => {
 };
 
 exports.storeVerificationData = (req, extractedData, country) => {
+  console.log('Storing verification data in session:', JSON.stringify(extractedData, null, 2).substring(0, 200) + '...');
+  
   // Initialize verification data in session if not exists
   if (!req.session.verificationData) {
     req.session.verificationData = {};
@@ -269,6 +271,15 @@ exports.storeVerificationData = (req, extractedData, country) => {
   req.session.verificationData.extractedData = extractedData;
   req.session.verificationData.timestamp = Date.now();
   req.session.verificationData.country = 'BA'; // Only supporting Bosnian IDs
+  
+  // Force session save to ensure data is persisted
+  req.session.save(err => {
+    if (err) {
+      console.error('Error saving session:', err);
+    } else {
+      console.log('Session saved successfully, session ID:', req.session.id);
+    }
+  });
 };
 
 /**
@@ -312,16 +323,27 @@ exports.verifyUserData = async (req, res) => {
       });
     }
     
+    // Debug session information
+    console.log('Session ID:', req.session.id);
+    console.log('Session keys:', Object.keys(req.session));
+    
     // Check if verification data exists in session
     if (!req.session.verificationData) {
+      console.error('No verificationData found in session. Available session data:', 
+                  JSON.stringify(req.session, (k, v) => k === 'cookie' ? '[Cookie Object]' : v));
+      
       return res.status(400).json({ 
         success: false,
-        message: 'No ID verification data found. Please upload your ID first.'
+        message: 'No ID verification data found. Please upload your ID first.',
+        sessionId: req.session.id // Include session ID for debugging
       });
     }
     
     // Get OCR data from session
     const sessionData = req.session.verificationData;
+    console.log('Session verification data found:', 
+               JSON.stringify(sessionData, null, 2).substring(0, 200) + '...');
+    
     if (!sessionData) {
       return res.status(400).json({ 
         success: false,

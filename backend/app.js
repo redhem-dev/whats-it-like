@@ -86,12 +86,14 @@ app.use(cors({
 // Configure sessions for ID verification
 app.use(session({ 
   secret: process.env.SESSION_SECRET || 'temporarydevsecretshouldbereplaced', 
-  resave: false, 
-  saveUninitialized: false,
+  resave: true, // Changed to true to ensure session is saved back to store
+  saveUninitialized: true, // Changed to true to save new sessions
+  name: 'whatsitlike.sid', // Custom name for the cookie
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-    maxAge: 30 * 60 * 1000 // 30 minutes - enough time for ID verification process
+    sameSite: 'lax', // Allow cookies in same-site requests
+    maxAge: 60 * 60 * 1000 // Extended to 60 minutes for ID verification process
   }
 }));
 app.use(passport.initialize());
