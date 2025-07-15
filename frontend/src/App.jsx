@@ -39,10 +39,13 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
   
-  // If authenticated but email not verified, redirect to verification page
-  // Skip this check for the email verification page itself
-  if (!emailVerified && !location.pathname.includes('/verify-email')) {
-    console.log('User not verified, redirecting to verification page');
+  // Check if this user needs email verification (new registration)
+  // We'll only redirect if:
+  // 1. The user data exists (they're logged in)
+  // 2. Email is specifically marked as NOT verified (emailVerified === false)
+  // 3. We're not already on the verification page
+  if (userData && emailVerified === false && !location.pathname.includes('/verify-email')) {
+    console.log('Email verification needed, redirecting to verification page');
     return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
