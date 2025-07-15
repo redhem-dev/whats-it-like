@@ -825,6 +825,15 @@ exports.verifyUserData = async (req, res) => {
       dataSource: dataSource
     };
     
+    // CRITICAL: Store verified ID info for signup process
+    req.session.verifiedIdInfo = {
+      idNumber: normalizedInputId, // Use normalized version for consistency
+      firstName: firstName,
+      lastName: lastName,
+      country: extractedData.country || country || 'BA',
+      verifiedAt: Date.now()
+    };
+    
     // Force session save to ensure verification status persists
     if (typeof req.session.save === 'function') {
       req.session.save();
