@@ -2,7 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { API_URL } from '../services/api';
 import Navbar from '../components/Navbar';
+import UserHoverCard from '../components/UserHoverCard';
+import MockAd from '../components/ads/MockAd';
 import useAuth from '../hooks/useAuth';
+
+// Helper function to format dates consistently
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown date';
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(date);
+};
 
 const SearchResults = () => {
   const [searchResults, setSearchResults] = useState([]);
@@ -89,15 +102,8 @@ const SearchResults = () => {
     
     try {
       const token = localStorage.getItem('authToken');
-      
-      // Check current vote to determine final vote value
-      const post = searchResults.find(p => p._id === postId);
-      let finalVoteValue = voteType;
-      
-      if (post.userVote === voteType) {
-        // Clicking same vote type again = remove vote
-        finalVoteValue = 0;
-      }
+      // Convert string voteType to number if needed
+      const voteValue = voteType === 'upvote' ? 1 : voteType === 'downvote' ? -1 : voteType;
       
       const response = await fetch(`${API_URL}/api/posts/${postId}/vote`, {
         method: 'POST',
@@ -105,32 +111,62 @@ const SearchResults = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ voteType: finalVoteValue })
+        body: JSON.stringify({ vote: voteValue })
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
+        throw new Error('Failed to vote on post');
       }
-      
-      // Update just the one post with the result
-      const result = await response.json();
-      
-      setSearchResults(prevResults => {
-        return prevResults.map(post => {
-          if (post._id === postId) {
-            return {
-              ...post,
-              votes: {
-                ...post.votes,
-                upvotes: result.upvotes,
-                downvotes: result.downvotes
-              },
-              userVote: result.userVote
-            };
+
+      // Update UI to reflect the new vote
+      const updatedResults = searchResults.map(post => {
+        if (post._id === postId) {
+          // Calculate the new vote values based on the user's previous vote
+          const prevVote = post.userVote;
+          let updatedPost = { ...post };
+          
+          // Handle upvote
+          if (voteValue === 1) {
+            if (prevVote === 1) {
+              // User is removing their upvote
+              updatedPost.userVote = 0;
+              updatedPost.votes.upvotes--;
+            } else if (prevVote === -1) {
+              // User is changing from downvote to upvote
+              updatedPost.userVote = 1;
+              updatedPost.votes.upvotes++;
+              updatedPost.votes.downvotes--;
+            } else {
+              // User is adding a new upvote
+              updatedPost.userVote = 1;
+              updatedPost.votes.upvotes++;
+            }
           }
-          return post;
-        });
+          // Handle downvote
+          else if (voteValue === -1) {
+            if (prevVote === -1) {
+              // User is removing their downvote
+              updatedPost.userVote = 0;
+              updatedPost.votes.downvotes--;
+            } else if (prevVote === 1) {
+              // User is changing from upvote to downvote
+              updatedPost.userVote = -1;
+              updatedPost.votes.upvotes--;
+              updatedPost.votes.downvotes++;
+            } else {
+              // User is adding a new downvote
+              updatedPost.userVote = -1;
+              updatedPost.votes.downvotes++;
+            }
+          }
+          
+          return updatedPost;
+        }
+        return post;
       });
+      
+      setSearchResults(updatedResults);
+      
     } catch (error) {
       console.error('Error voting on post:', error);
     }
@@ -158,53 +194,91 @@ const SearchResults = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          {searchResults.map(post => (
-            <div key={post._id} className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold mb-2">
-                <Link to={`/post/${post._id}`} className="text-blue-600 hover:text-blue-800">
-                  {post.title}
-                </Link>
-              </h2>
-              <p className="text-gray-700 mb-4">{post.content.substring(0, 200)}...</p>
+          {/* Top Banner Ad */}
+          <MockAd type="banner" label="Search Results Banner Ad" />
+          
+          {searchResults.map((post, index) => (
+            <React.Fragment key={post._id}>
+              {/* Insert ad after every 3 posts */}
+              {index > 0 && index % 3 === 0 && (
+                <MockAd type="rectangle" label={`In-feed Ad #${Math.ceil(index/3)}`} />
+              )}
               
-              {/* Post metadata */}
-              <div className="flex items-center text-sm text-gray-500 mb-4">
-                <span>By: {post.authorId?.email || 'Anonymous'}</span>
-                <span className="mx-2">•</span>
-                <span>{new Date(post.createdAt).toLocaleDateString()}</span>
+              <div className="bg-white shadow rounded-lg overflow-hidden">
+                <div className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                        <Link to={`/post/${post._id}`} className="hover:text-blue-600">
+                          {post.title}
+                        </Link>
+                      </h2>
+                      <div className="flex items-center text-sm text-gray-500 mb-4">
+                        <UserHoverCard 
+                          userId={post.authorId?._id || post.author?._id} 
+                          userName={post.authorId ? 
+                            `${post.authorId.firstName || ''} ${post.authorId.lastName || ''}` : 
+                            post.author ? `${post.author.personalInfo?.firstName || ''} ${post.author.personalInfo?.lastName || ''}` : 'Anonymous'
+                          }
+                          userEmail={post.authorId?.email || post.author?.email}
+                        >
+                          <Link to={`/profile/${post.authorId?._id || post.author?._id || ''}`} className="text-blue-600 hover:underline">
+                            {post.authorId ? 
+                              `${post.authorId.firstName || ''} ${post.authorId.lastName || ''}` : 
+                              post.author ? `${post.author.personalInfo?.firstName || ''} ${post.author.personalInfo?.lastName || ''}` : 'Anonymous'
+                            }
+                          </Link>
+                        </UserHoverCard>
+                        <span className="mx-2">•</span>
+                        <span>{formatDate(post.createdAt)}</span>
+                        <span className="mx-2">•</span>
+                        <span>
+                          {post.location?.city || 'Unknown'}, {post.location?.country || 'Unknown'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <p className="text-gray-700 mb-4">{post.content?.substring(0, 150)}...</p>
+                  
+                  <div className="flex items-center space-x-4">
+                    {/* Voting */}
+                    <div className="flex items-center space-x-4">
+                      <button 
+                        onClick={() => handleVote(post._id, 'upvote')}
+                        className={`flex items-center ${post.userVote === 1 ? 'text-green-600' : 'text-gray-500'} hover:text-green-600 transition-colors`}
+                      >
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                        <span className="ml-1 font-medium">{post.votes?.upvotes || 0}</span>
+                      </button>
+                      
+                      <button 
+                        onClick={() => handleVote(post._id, 'downvote')}
+                        className={`flex items-center ${post.userVote === -1 ? 'text-red-600' : 'text-gray-500'} hover:text-red-600 transition-colors`}
+                      >
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                        <span className="ml-1 font-medium">{post.votes?.downvotes || 0}</span>
+                      </button>
+                      
+                      <Link to={`/post/${post._id}`} className="flex items-center text-gray-500 hover:text-blue-600 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        <span>View Post</span>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
               </div>
-              
-              {/* Voting buttons */}
-              <div className="flex items-center space-x-4">
-                <button 
-                  onClick={() => handleVote(post._id, 1)}
-                  className="flex items-center space-x-1"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${post.userVote === 1 ? 'text-green-600' : 'text-gray-500'}`} viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
-                  </svg>
-                  <span>{post.votes.upvotes}</span>
-                </button>
-                
-                <button 
-                  onClick={() => handleVote(post._id, -1)}
-                  className="flex items-center space-x-1"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${post.userVote === -1 ? 'text-red-600' : 'text-gray-500'}`} viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" />
-                  </svg>
-                  <span>{post.votes.downvotes}</span>
-                </button>
-                
-                <Link to={`/post/${post._id}`} className="flex items-center space-x-1 text-gray-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-                  </svg>
-                  <span>View Post</span>
-                </Link>
-              </div>
-            </div>
+            </React.Fragment>
           ))}
+          
+          {/* Bottom Banner Ad */}
+          {searchResults.length > 0 && <MockAd type="banner" label="Search Results Bottom Banner Ad" />}
         </div>
       )}
     </div>
