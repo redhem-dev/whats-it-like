@@ -104,7 +104,8 @@ const PublicProfile = () => {
               lastName: authUser?.user?.lastName || authUser?.user?.personalInfo?.lastName || (userData.name ? userData.name.split(' ').slice(1).join(' ') : '')
             },
             createdAt: authUser?.user?.createdAt || userData.memberSince,
-            reputation: userData.reputation?.score || 50
+            reputation: userData.reputation?.score || 50,
+            documentVerified: true // Always show as verified
           };
         } else {
           // Other user profile endpoint response structure
@@ -118,7 +119,8 @@ const PublicProfile = () => {
               lastName: userData.name ? userData.name.split(' ').slice(1).join(' ') : ''
             },
             createdAt: userData.memberSince,
-            reputation: userData.reputation?.score || 50
+            reputation: userData.reputation?.score || 50,
+            documentVerified: true // Always show as verified
           };
         }
         

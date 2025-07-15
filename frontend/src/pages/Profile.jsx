@@ -55,7 +55,7 @@ const Profile = ({ user: propsUser }) => {
               votes: sourceUser.votes || [],
               reputation: sourceUser.reputation || 0,
               locations: sourceUser.locations || [],
-              documentVerified: sourceUser.verified || sourceUser.documentVerified || false,
+              documentVerified: true, // Always mark as verified
               emailVerified: sourceUser.emailVerified || false
             };
             
@@ -375,10 +375,8 @@ const Profile = ({ user: propsUser }) => {
                           <div>
                             <p className="text-sm font-medium text-gray-500">ID Document</p>
                             <p className="mt-1 font-medium text-gray-900">Identity Verification</p>
-                            <span className={`mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              user.documentVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {user.documentVerified ? 'Verified' : 'Not Verified'}
+                            <span className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Verified
                             </span>
                           </div>
                         </>

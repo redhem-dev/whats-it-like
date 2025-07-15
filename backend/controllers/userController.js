@@ -755,6 +755,7 @@ exports.getUserVotes = async (req, res) => {
         .filter(vote => vote.postId) // Filter out any votes where the post has been deleted
         .map(vote => ({
           _id: vote._id,
+          postId: vote.postId._id, // Include the post ID for linking
           title: vote.postId.title,
           vote: vote.vote, // 1 for upvote, -1 for downvote
           author: vote.postId.authorId,
