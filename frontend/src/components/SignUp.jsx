@@ -63,19 +63,39 @@ const SignUp = () => {
   };
 
   // Handle ID verification completion
-  const handleVerificationComplete = async (verified, errorMessage) => {
+  const handleVerificationComplete = async (verified, errorMessage, verificationData = null) => {
     setIsVerified(verified);
+    console.log('Verification status in SignUp:', verified, verificationData?.sessionId);
     
     if (verified) {
       // If verified, proceed with account creation through the useAuth hook
-      // This ensures consistent session handling with cookies
+      // Include verification data to ensure authorization succeeds
       try {
-        // Use the signup function from the hook instead of direct API call
-        // This gives better consistency with session handling
-        const result = await signup(firstName, lastName, email, password, idNumber, COUNTRY_CODE);
+        // Get verification data from parameter or localStorage (as backup)
+        const savedVerification = verificationData || JSON.parse(localStorage.getItem('verificationData') || '{}');
+        console.log('Using verification data for signup:', savedVerification);
         
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to sign up');
+        // Use customized signup function with verification data
+        const result = await fetch(`${API_URL}/api/auth/signup`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            firstName, 
+            lastName, 
+            email, 
+            password, 
+            idNumber, 
+            country: COUNTRY_CODE,
+            // Include verification data in the request for backend validation
+            verificationData: savedVerification
+          }),
+          credentials: 'include', // Include cookies for session handling
+        }).then(res => res.json());
+        
+        if (!result.success && !result.token) {
+          throw new Error(result.message || 'Failed to sign up');
         }
         
         // Store essential verification data

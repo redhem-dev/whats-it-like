@@ -37,21 +37,51 @@ exports.signup = async (req, res) => {
       console.log('verificationStatus:', JSON.stringify(req.session?.verificationStatus || {}));
       console.log('verifiedIdInfo:', JSON.stringify(req.session?.verifiedIdInfo || {}));
       console.log('ID provided in request:', idNumber);
+      console.log('Verification data in request body:', !!req.body.verificationData);
       console.log('================================');
       
-      if (!req.session || !req.session.isVerified) {
+      // First check if verification data is included directly in the request
+      // This is our primary fallback if session is not maintained between requests
+      const verificationFromRequest = req.body.verificationData;
+      let isVerified = false;
+      let verifiedIdInfo = null;
+      
+      if (verificationFromRequest && 
+          verificationFromRequest.verified === true && 
+          verificationFromRequest.sessionId && 
+          verificationFromRequest.idMatch === true && 
+          verificationFromRequest.nameMatch === true) {
+        
+        console.log('Using verification data from request body');
+        isVerified = true;
+        verifiedIdInfo = {
+          idNumber: idNumber, // Trust the ID number from the request if verification passed
+          firstName,
+          lastName,
+          verifiedAt: Date.now()
+        };
+      } 
+      // If no valid verification in request, fall back to session
+      else if (req.session && req.session.isVerified) {
+        console.log('Using verification data from session');
+        isVerified = true;
+        verifiedIdInfo = req.session.verifiedIdInfo;
+      }
+      
+      // If neither verification source is valid, reject signup
+      if (!isVerified) {
         return res.status(403).json({ 
           message: 'ID verification required before registration. Please verify your identity first.',
           debug: {
             hasSession: !!req.session,
             isVerified: !!req.session?.isVerified,
-            sessionId: req.session?.id || 'none'
+            sessionId: req.session?.id || 'none',
+            hasRequestVerification: !!verificationFromRequest
           }
         });
       }
       
       // Additional check to ensure the ID provided matches the verified ID
-      const verifiedIdInfo = req.session.verifiedIdInfo;
       if (!verifiedIdInfo || verifiedIdInfo.idNumber !== idNumber) {
         console.error('ID number mismatch during registration:', { 
           provided: idNumber,

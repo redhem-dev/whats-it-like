@@ -193,14 +193,23 @@ const IdVerification = ({ onVerificationComplete, formData, onFormDataChange = n
       // Only consider verified if both the idMatch and verified flags are true
       const isVerified = verificationData.verified === true && verificationData.idMatch === true;
       
+      // Store full verification data including session ID in localStorage for signup
+      if (isVerified) {
+        localStorage.setItem('verificationData', JSON.stringify(verificationData));
+        console.log('Verification data saved to localStorage with session ID:', verificationData.sessionId);
+      }
+      
       setVerificationResult({
         success: isVerified,
         message: isVerified ? 'Identity verified successfully' : 'Verification failed'
       });
       
-      // Notify parent component with the actual verification status
+      // Notify parent component with the actual verification status and full verification data
       if (onVerificationComplete) {
-        onVerificationComplete(isVerified, isVerified ? 'Verification successful' : verificationData.message || 'Verification failed');
+        onVerificationComplete(isVerified, 
+          isVerified ? 'Verification successful' : verificationData.message || 'Verification failed',
+          isVerified ? verificationData : null
+        );
       }
     } catch (err) {
       console.error('Verification failed:', err);
