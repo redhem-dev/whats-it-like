@@ -4,7 +4,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import UserHoverCard from '../components/UserHoverCard';
 import useAuth from '../hooks/useAuth';
-import { API_URL } from '../services/api';
 import { LocationContext } from '../contexts/LocationContext';
 import MockAd from '../components/ads/MockAd';
 

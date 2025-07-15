@@ -3,8 +3,33 @@ const session = require('express-session');
 const passport = require('passport');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const connectDB = require('./config/database');
 require('dotenv').config();
+
+// Handle Google Vision API credentials for cloud deployment
+if (process.env.NODE_ENV === 'production' && process.env.GOOGLE_VISION_CREDENTIALS) {
+  // Create credentials directory if it doesn't exist
+  const credDir = path.join(__dirname, 'config', 'credentials');
+  if (!fs.existsSync(credDir)) {
+    fs.mkdirSync(credDir, { recursive: true });
+  }
+  
+  // Write credentials to file
+  const credPath = path.join(credDir, 'vision-api-credentials.json');
+  fs.writeFileSync(credPath, process.env.GOOGLE_VISION_CREDENTIALS);
+  
+  // Set environment variable to the file path
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath;
+}
+
+// Create uploads directory if it doesn't exist
+const uploadDir = path.join(__dirname, 'uploads', 'temp');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 require('./config/auth');
 
 // Define frontend URL based on environment
