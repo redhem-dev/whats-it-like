@@ -1,10 +1,14 @@
 /**
  * Controller for ID verification related endpoints
+ * Specialized for Bosnian ID card verification only
  */
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const ocrService = require('../services/ocrService');
+const countryIdService = require('../services/countryIdService');
+const scriptConverter = require('../utils/scriptConverter');
+const { hashIdNumber } = require('../utils/idHasher');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -47,99 +51,225 @@ const upload = multer({
 });
 
 /**
- * Upload and process ID card image
+ * Upload and process ID card image with country-specific verification
  * @route POST /api/verify/upload-id
+ * @access Private
  */
-exports.uploadIdCard = [
-  upload.single('idCard'),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ message: 'No file uploaded' });
+exports.uploadIdCard = async (req, res) => {
+  try {
+    // Define a single file upload middleware
+    const uploadMiddleware = upload.single('idCard');
+    
+    // Handle the upload
+    uploadMiddleware(req, res, async function(err) {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      console.log('ID card uploaded:', req.file.path);
+      
+      // Only supporting Bosnian IDs now
+      const country = 'BA';
+      const filePath = req.file.path;
 
       // Process the uploaded ID card
-      const filePath = req.file.path;
       let extractedData;
       
       try {
-        // Define which fields to extract based on registration needs
-        const ocrOptions = {
-          extractName: true,
-          extractIdNumber: true,
-          extractDateOfBirth: false, // Only extract what we need for verification
-          extractAddress: false,
-          // Add any custom keywords specific to your country's ID format
-          idNumberKeywords: ['id', 'number', 'identification', 'document no', 'no.', 'ID#']
-        };
-        
-        extractedData = await ocrService.processIdCard(filePath, ocrOptions);
-      } catch (ocrError) {
-        console.error('Error processing ID card with OCR service:', ocrError);
-        
-        // Handle common Google Cloud API errors
-        if (ocrError.message && ocrError.message.includes('billing')) {
-          return res.status(500).json({ 
-            message: 'OCR service billing configuration error. Please contact support.'
+        // Check if file was uploaded
+        if (!req.file) {
+          return res.status(400).json({
+            success: false,
+            message: 'No file uploaded'
           });
         }
         
-        if (ocrError.message && ocrError.message.includes('credentials')) {
-          return res.status(500).json({ 
-            message: 'OCR service credentials error. Please check environment configuration.'
+        // Validate file is an image
+        if (!req.file.mimetype.startsWith('image/')) {
+          // Remove the invalid file
+          fs.unlinkSync(req.file.path);
+          
+          return res.status(400).json({
+            success: false,
+            message: 'Uploaded file must be an image'
           });
         }
         
-        // Delete the uploaded file
+        // Process Bosnian ID card
+        
+        // Process the ID card image with country-specific OCR
         try {
-          fs.unlinkSync(filePath);
-          console.log('Temporary file deleted after error');
-        } catch (unlinkError) {
-          console.error('Error deleting file after OCR error:', unlinkError);
+          // Extract text from ID card image using OCR
+          const baseData = await ocrService.processIdCard(req.file.path);
+          
+          if (!baseData || !baseData.rawText) {
+            throw new Error('OCR failed to extract text from ID card');
+          }
+          
+          // We're only processing Bosnian IDs now
+          const finalCountry = 'BA';
+          
+          // Process Bosnian ID extraction
+          const countrySpecificData = countryIdService.extractIdCardData(baseData.rawText);
+          
+          // Use the new country-specific extraction result
+          let extractedIdNumber = countrySpecificData.idNumber;
+          const extractedName = {
+            firstName: countrySpecificData.firstName,
+            lastName: countrySpecificData.lastName,
+            fullName: countrySpecificData.fullName
+          };
+          
+          // Continue with Bosnian ID extraction
+          
+          // CRITICAL VALIDATION: Validate country-specific ID format
+          if (extractedIdNumber) {
+            // Validate Bosnian ID format
+            const isValidId = /^[0-9A-Z]{7,12}$/.test(extractedIdNumber) && 
+                            !containsBannedWords(extractedIdNumber);
+            
+            if (!isValidId) {
+              console.error(`Invalid Bosnian ID format:`, extractedIdNumber);
+              extractedIdNumber = null; // Discard invalid ID
+            }
+          }
+          
+          // Helper function to check for banned words
+          function containsBannedWords(text) {
+            if (!text) return false;
+            
+            const bannedWords = ['iskaznica', 'osobna', 'karta', 'licna', 'lična', 'identity', 'card'];
+            const lowerText = text.toLowerCase();
+            
+            for (const word of bannedWords) {
+              if (lowerText.includes(word)) {
+                console.error(`⚠️ CRITICAL ERROR: ID contains banned word "${word}":`, text);
+                return true;
+              }
+            }
+            
+            return false;
+          }
+          
+          // Use Bosnian extraction processing
+          extractedData = {
+            ...baseData,
+            ...countrySpecificData,
+            country: 'BA',
+            countryName: 'Bosnia and Herzegovina',
+            idNumber: extractedIdNumber || countrySpecificData.idNumber,
+            firstName: extractedName.firstName || countrySpecificData.firstName,
+            lastName: extractedName.lastName || countrySpecificData.lastName,
+            fullName: extractedName.fullName || countrySpecificData.fullName || 
+              (extractedName.firstName && extractedName.lastName ? 
+                `${extractedName.firstName} ${extractedName.lastName}` : null)
+          };
+          
+          // ID card processing complete
+        } catch (error) {
+          console.error('Error processing ID card:', error);
+          extractedData = await ocrService.processIdCard(req.file.path);
         }
         
-        return res.status(500).json({ 
-          message: 'Error processing ID card. Please try again or use a clearer image.'
-        });
-      }
-
-      // Store in session for later verification
-      if (!req.session) {
-        req.session = {};
-      }
-      
-      req.session.idVerification = {
-        extractedData,
-        timestamp: Date.now()
-      };
-      
-      console.log('ID verification data stored in session');
-
-      // Delete file after processing (important for security!)
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error deleting temporary file:', err);
-        else console.log('Temporary file deleted successfully');
-      });
-
-      res.json({ 
-        success: true,
-        message: 'ID card processed successfully',
-        extractedData: {
-          fullName: extractedData.fullName || 'Not detected',
-          idNumber: extractedData.idNumber || 'Not detected'
+        // Clean up any SPECIMEN text from the data
+        if (extractedData.fullName && extractedData.fullName.toUpperCase().includes('SPECIMEN')) {
+          extractedData.fullName = extractedData.fullName.replace(/SPECIMEN/gi, '').trim();
         }
-      });
-    } catch (error) {
-      console.error('ID verification error:', error);
-      res.status(500).json({ 
-        message: 'Failed to process ID card',
-        error: error.message
-      });
-    }
+        
+        if (extractedData.firstName && extractedData.firstName.toUpperCase().includes('SPECIMEN')) {
+          extractedData.firstName = extractedData.firstName.replace(/SPECIMEN/gi, '').trim();
+        }
+        
+        if (extractedData.lastName && extractedData.lastName.toUpperCase().includes('SPECIMEN')) {
+          extractedData.lastName = extractedData.lastName.replace(/SPECIMEN/gi, '').trim();
+        }
+        
+        // If we have first and last name but no full name, create it
+        if (!extractedData.fullName && extractedData.firstName && extractedData.lastName) {
+          extractedData.fullName = `${extractedData.firstName} ${extractedData.lastName}`;
+        }
+        
+        // Store verification data in session
+        exports.storeVerificationData(req, extractedData, country);
+        
+        // Verification data stored in session
+
+        // Delete file after processing (important for security!)
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error('Error deleting temporary file:', err);
+        });
+
+        // Set country name for Bosnia
+        const finalCountry = 'BA';
+        const countryName = 'Bosnia and Herzegovina';
+        
+        // Fix names and ID number before returning
+        const fullName = extractedData.fullName || 
+                        (extractedData.firstName && extractedData.lastName ? 
+                         `${extractedData.firstName} ${extractedData.lastName}` : 'Not detected');
+        
+        // CRITICAL VALIDATION: Final ID validation before returning to frontend
+        let idNumber = extractedData.idNumber || null;
+        
+        // Validate Bosnian ID format
+        if (idNumber) {          
+          // Bosnia allows alphanumeric IDs
+          if (!/^[0-9A-Z]{7,12}$/.test(idNumber)) {
+            console.error('Invalid Bosnian ID format, rejecting:', idNumber);
+            idNumber = null;
+          }
+        }
+        
+        // Check for banned words
+        const bannedWords = ['iskaznica', 'osobna', 'karta', 'licna', 'lična', 'identity', 'card'];
+        if (idNumber) {
+          for (const word of bannedWords) {
+            if (idNumber.toLowerCase().includes(word)) {
+              console.error(`⚠️ CRITICAL ERROR: ID contains banned word "${word}", rejecting:`, idNumber);
+              idNumber = null;
+              break;
+            }
+          }
+        }
+        
+        // Return placeholder if validation failed
+        const finalIdNumber = idNumber || 'Not detected';
+        
+        // Send response to frontend
+        
+        res.json({ 
+          success: true,
+          message: 'ID card processed successfully',
+          extractedData: {
+            fullName: fullName,
+            idNumber: finalIdNumber,
+            country: finalCountry,
+            countryName: countryName
+          }
+        });
+      } catch (error) {
+        console.error('ID verification error:', error);
+        res.status(500).json({ message: 'Failed to process ID card' });
+      }
+    });
+  } catch (error) {
+    console.error('Error processing ID card:', error);
+    res.status(500).json({ message: 'Error processing ID card' });
   }
-];
+};
+
+exports.storeVerificationData = (req, extractedData, country) => {
+  // Initialize verification data in session if not exists
+  if (!req.session.verificationData) {
+    req.session.verificationData = {};
+  }
+  
+  // Store extracted data in session
+  req.session.verificationData.extractedData = extractedData;
+  req.session.verificationData.timestamp = Date.now();
+  req.session.verificationData.country = 'BA'; // Only supporting Bosnian IDs
+};
 
 /**
  * Verify user provided data against extracted ID card data
@@ -148,55 +278,201 @@ exports.uploadIdCard = [
  */
 exports.verifyUserData = async (req, res) => {
   try {
-    const { firstName, lastName, idNumber } = req.body;
+    // Verification process started
     
-    // Validate input
-    if (!firstName || !lastName || !idNumber) {
+    const { firstName, lastName, idNumber: rawIdNumber } = req.body;
+    
+    // Validate input - collect missing fields for better error message
+    const missingFields = [];
+    if (!firstName) missingFields.push('firstName');
+    if (!lastName) missingFields.push('lastName');
+    if (!rawIdNumber) missingFields.push('idNumber');
+    
+    // Bosnian ID validation
+    let idNumber = rawIdNumber;
+    
+    // Validate Bosnian ID format
+    if (idNumber) {
+      // Bosnia allows alphanumeric IDs
+      if (!/^[0-9A-Z]{7,12}$/.test(idNumber)) {
+        console.error('Invalid Bosnian ID format:', idNumber);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Bosnian ID format. ID must be 7-12 alphanumeric characters.'
+        });
+      }
+    }
+    
+    if (missingFields.length > 0) {
+      console.log(`Match data validation failed. Missing fields: ${missingFields.join(', ')}`);
       return res.status(400).json({ 
-        message: 'Missing required fields: firstName, lastName, and idNumber are required'
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')} are required`,
+        details: 'All fields must be provided for ID verification'
       });
     }
     
     // Check if verification data exists in session
-    if (!req.session || !req.session.idVerification) {
+    if (!req.session.verificationData) {
       return res.status(400).json({ 
+        success: false,
         message: 'No ID verification data found. Please upload your ID first.'
       });
     }
     
-    // Check if verification data is recent (within 30 minutes)
-    const thirtyMinutes = 30 * 60 * 1000;
-    if (Date.now() - req.session.idVerification.timestamp > thirtyMinutes) {
-      delete req.session.idVerification;
+    // Get OCR data from session
+    const sessionData = req.session.verificationData;
+    if (!sessionData) {
       return res.status(400).json({ 
-        message: 'ID verification expired. Please upload your ID again.'
+        success: false,
+        message: 'No verification data found in session. Please upload your ID first.'
       });
     }
     
-    // Compare user-provided data with OCR-extracted data using enhanced verification
-    const verificationResult = ocrService.verifyUserInputMatchesOcr(
-      { firstName, lastName, idNumber },
-      req.session.idVerification.extractedData
-    );
+    // Extract data with fallbacks
+    const extractedData = sessionData.extractedData || sessionData;
+    const country = extractedData.country || 'BA';
     
-    if (verificationResult.success) {
-      // If data matches, mark as verified in the session
-      req.session.isVerified = true;
-      return res.json({ 
-        success: true, 
-        message: 'Identity verified successfully',
-        extractedData: req.session.idVerification.extractedData
-      });
+    // Only check for Google session if we're in a Google registration flow
+    const isGoogleFlow = req.path.includes('google') || req.body.isGoogleFlow;
+    
+    if (isGoogleFlow) {
+      const hasSessionInfo = !!req.session.googleAuthInfo;
+      const hasVerification = !!req.session.googleVerification;
+      const userData = req.session.googleAuthInfo || {};
+      
+      if (!hasSessionInfo) {
+        return res.status(401).json({
+          success: false,
+          message: 'No Google session found for Google registration flow'
+        });
+      }
+      
+      // For Google flow, verify the verification data matches
+      if (hasVerification) {
+        const verificationData = req.session.googleVerification;
+        
+        // Check if the verification data matches the current request
+        if (verificationData.firstName !== firstName || 
+            verificationData.lastName !== lastName ||
+            verificationData.idNumber !== idNumber) {
+          return res.status(400).json({
+            success: false,
+            message: 'Verification data does not match session data'
+          });
+        }
+      }
+    }
+    
+    console.log('EXTRACTED DATA FROM SESSION:', extractedData);
+    
+    console.log('Verifying user data against OCR data:');
+    console.log('User input:', { firstName, lastName, idNumber });
+    console.log('OCR data:', extractedData);
+
+    // Ensure the OCR data is properly formatted for verification
+    // This is critical for proper verification
+    const ocrDataToVerify = {
+      fullName: extractedData.fullName,
+      idNumber: extractedData.idNumber,
+      country: country
+    };
+    
+    console.log('Formatted OCR data for verification:', ocrDataToVerify);
+    
+    // Normalize ID numbers for comparison
+    const normalizeId = (id) => {
+      if (!id) return '';
+      return String(id).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    };
+    
+    const normalizedInputId = normalizeId(idNumber);
+    const normalizedOcrId = normalizeId(extractedData.idNumber);
+    
+    console.log('Normalized IDs for comparison:', {
+      input: normalizedInputId,
+      ocr: normalizedOcrId
+    });
+    
+    // Check if the normalized IDs match
+    const idMatchResult = normalizedInputId === normalizedOcrId;
+    const nameMatchResult = 
+      firstName.toLowerCase() === extractedData.firstName.toLowerCase() &&
+      lastName.toLowerCase() === extractedData.lastName.toLowerCase();
+    
+    const isVerified = idMatchResult && nameMatchResult;
+    
+    // Store verification status in session
+    req.session.isVerified = isVerified;
+    req.session.verificationStatus = {
+      verified: isVerified,
+      timestamp: Date.now(),
+      idMatch: idMatchResult,
+      nameMatch: nameMatchResult,
+      country: country
+    };
+    
+    // Prepare response message
+    let message;
+    if (isVerified) {
+      message = 'ID verification successful. Please check your email for verification code.';
+      
+      // Store successful verification in session
+      req.session.verifiedIdInfo = {
+        idNumber: idNumber,
+        country: country,
+        firstName: extractedData.firstName,
+        lastName: extractedData.lastName,
+        email: req.body.email // Store email for verification
+      };
+      
+      // Set flag to indicate email verification is needed
+      req.session.needsEmailVerification = true;
     } else {
-      return res.status(400).json({ 
-        success: false, 
-        message: verificationResult.message,
-        mismatches: verificationResult.mismatches
-      });
+      if (!idMatchResult) {
+        message = 'ID verification failed. The ID number provided does not match your ID card.';
+      } else if (!nameMatchResult) {
+        message = 'Name verification failed. The name provided does not match your ID card.';
+      } else {
+        message = 'Verification failed. Please check that your information matches your ID card.';
+      }
     }
+
+    // If ID verification was successful, trigger email verification process
+    if (isVerified && req.body.email) {
+      try {
+        // Store the email in the session for the next step
+        req.session.verifiedEmail = req.body.email;
+        
+        // Return the verification result with nextStep indicating email verification
+        return res.json({
+          success: true,
+          verified: isVerified,
+          nameMatch: nameMatchResult,
+          idMatch: idMatchResult,
+          country: country,
+          message: message,
+          nextStep: 'email_verification',
+          extractedData: extractedData
+        });
+      } catch (emailError) {
+        console.error('Error setting up email verification:', emailError);
+      }
+    }
+    
+    // Return the verification result
+    return res.json({
+      success: true,
+      verified: isVerified,
+      nameMatch: nameMatchResult,
+      idMatch: idMatchResult,
+      country: country,
+      message: message,
+      extractedData: extractedData
+    });
   } catch (error) {
-    console.error('Verification error:', error);
-    res.status(500).json({ message: 'Error verifying user data' });
+    console.error('Error verifying user data:', error);
+    return res.status(500).json({ success: false, message: 'Error verifying user data' });
   }
 };
 
@@ -208,3 +484,255 @@ exports.checkVerificationStatus = (req, res) => {
   const isVerified = req.session && req.session.isVerified;
   res.json({ verified: !!isVerified });
 };
+
+/**
+ * Process ID verification for Google-authenticated users
+ * @route POST /api/verify/google-user
+ */
+exports.verifyGoogleUser = async (req, res) => {
+  try {
+    const { tempToken, idNumber: rawIdNumber, firstName, lastName, email, idVerified } = req.body;
+
+    // We only support Bosnian IDs now
+    const country = 'BA';
+    
+    // Validate Bosnian ID format
+    let idNumber = rawIdNumber;
+    if (idNumber) {
+      // Validate using Bosnian ID rules
+      const isValidId = validateBosnianIdFormat(idNumber);
+      
+      if (!isValidId.valid) {
+        console.error('Invalid Bosnian ID format:', idNumber);
+        return res.status(400).json({
+          success: false,
+          message: isValidId.message || 'Invalid ID number format for Bosnian ID card.'
+        });
+      }
+    }
+    
+    // Helper function to validate Bosnian ID format
+    function validateBosnianIdFormat(id) {
+      // Check for banned words first
+      const bannedWords = ['iskaznica', 'osobna', 'karta', 'licna', 'lična', 'identity', 'card'];
+      for (const word of bannedWords) {
+        if (id.toLowerCase().includes(word)) {
+          return { 
+            valid: false, 
+            message: `Invalid ID detected. ID should not contain text like "${word}".` 
+          };
+        }
+      }
+      
+      // Bosnian IDs can be alphanumeric (7-12 characters)
+      if (!/^[0-9A-Z]{7,12}$/i.test(id)) {
+        return { 
+          valid: false, 
+          message: 'Invalid Bosnian ID format. ID should be 7-12 alphanumeric characters.' 
+        };
+      }
+      
+      // If we got here, the ID is valid
+      return { valid: true };
+    }
+    
+    // Detailed validation with specific error messages
+    const validationErrors = [];
+    
+    if (!tempToken) validationErrors.push('verification token');
+    if (!idNumber) validationErrors.push('ID card number');
+    if (!firstName) validationErrors.push('first name');
+    if (!lastName) validationErrors.push('last name');
+    if (!email) validationErrors.push('email');
+    if (idVerified !== true) validationErrors.push('ID verification confirmation');
+    
+    if (validationErrors.length > 0) {
+      const missingFields = validationErrors.join(', ');
+      console.log(`Validation failed. Missing fields: ${missingFields}`);
+      
+      return res.status(400).json({
+        success: false,
+        message: `Verification failed: Missing ${missingFields}`,
+        details: 'All fields are required to complete registration'
+      });
+    }
+
+    // Verify the temp token matches the one in session
+    if (!req.session.tempToken || req.session.tempToken !== tempToken) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid or expired verification session' 
+      });
+    }
+
+    // Get temporary Google user data from session
+    const tempGoogleUser = req.session.tempGoogleUser;
+    if (!tempGoogleUser) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Google authentication data not found' 
+      });
+    }
+
+    const User = require('../models/User');
+    const jwt = require('jsonwebtoken');
+
+    // Check if a user with this Google ID already exists
+    const existingGoogleUser = await User.findOne({ googleId: tempGoogleUser.googleId });
+    if (existingGoogleUser) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'User with this Google ID already exists' 
+      });
+    }
+
+    // Check if a user with this email already exists
+    const existingEmailUser = await User.findOne({ email: tempGoogleUser.email });
+    if (existingEmailUser) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'User with this email already exists' 
+      });
+    }
+
+    // FINAL SECURITY CHECK: Revalidate ID number format with country-specific rules
+    if (idNumber) {
+      // We already defined validateBosnianIdFormat earlier in this function
+      // Reuse it for consistency
+      const finalValidation = validateBosnianIdFormat(idNumber);
+      
+      if (!finalValidation.valid) {
+        console.error(`⚠️ FINAL SECURITY CHECK: Invalid Bosnian ID format:`, idNumber);
+        return res.status(400).json({
+          success: false,
+          message: finalValidation.message || 'Invalid ID number format detected at final security check.'
+        });
+      }
+      
+      console.log(`ID validation passed for Bosnian ID format`);
+    }
+    
+    // Hash the ID number for GDPR compliance
+    const idHash = hashIdNumber(idNumber);
+    
+    // Create new user with Google data and hashed ID
+    // Prioritize data from request body, fall back to session data if needed
+    const newUser = new User({
+      googleId: tempGoogleUser.googleId,
+      email: email || tempGoogleUser.email,
+      firstName: firstName || tempGoogleUser.firstName,
+      lastName: lastName || tempGoogleUser.lastName,
+      idHash: idHash, // Store hash instead of raw ID
+      idCountry: 'BA', // Store detected country or fallback to default
+      verified: true,
+      emailVerified: true // Google email is already verified
+    });
+
+    // Calculate initials for consistent avatar display
+    const userFirstName = firstName || tempGoogleUser.firstName;
+    const userLastName = lastName || tempGoogleUser.lastName;
+    const userEmail = email || tempGoogleUser.email;
+    
+    // Follow the established pattern for avatar initials
+    newUser.initials = (userFirstName && userLastName) ? 
+      `${userFirstName[0]}${userLastName[0]}`.toUpperCase() : 
+      (userEmail ? `${userEmail[0]}${userEmail[1] || ''}`.toUpperCase() : '??');
+
+    await newUser.save();
+
+    // Generate JWT token for the new user
+    const token = jwt.sign(
+      { userId: newUser._id },
+      process.env.JWT_SECRET || 'whats-it-like-default-jwt-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Clear temporary session data
+    delete req.session.tempGoogleUser;
+    delete req.session.tempToken;
+
+    return res.status(201).json({
+      success: true,
+      message: 'User successfully created after ID verification',
+      token,
+      user: {
+        id: newUser._id,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        idVerified: newUser.idVerified
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error processing Google user verification:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Server error while processing verification' 
+    });
+  }
+};
+
+/**
+ * Check Google verification session validity
+ * @route GET /api/verify/google-session
+ */
+exports.checkGoogleSession = (req, res) => {
+  try {
+    const { token } = req.query;
+    
+    if (!token) {
+      return res.status(400).json({
+        valid: false,
+        message: 'No verification token provided'
+      });
+    }
+    
+    console.log('Checking Google session with token:', token);
+    console.log('Session data:', req.session);
+    
+    // Verify temp token matches session token
+    const isValid = req.session && 
+                   req.session.tempToken && 
+                   req.session.tempGoogleUser &&
+                   req.session.tempToken === token;
+    
+    if (isValid) {
+      const googleUser = req.session.tempGoogleUser;
+      
+      // Calculate initials for avatar consistency if not already present
+      if (!googleUser.initials) {
+        googleUser.initials = (googleUser.firstName && googleUser.lastName) ? 
+          `${googleUser.firstName[0]}${googleUser.lastName[0]}`.toUpperCase() : 
+          (googleUser.email ? `${googleUser.email[0]}${googleUser.email[1] || ''}`.toUpperCase() : '??');
+      }
+      
+      console.log('Valid Google session, returning user data:', googleUser);
+      
+      // Return Google user data stored in session
+      return res.status(200).json({
+        valid: true,
+        googleUser: {
+          email: googleUser.email,
+          firstName: googleUser.firstName,
+          lastName: googleUser.lastName,
+          initials: googleUser.initials
+        }
+      });
+    } else {
+      console.log('Invalid Google session token');
+      return res.status(401).json({
+        valid: false,
+        message: 'Invalid or expired Google verification session'
+      });
+    }
+  } catch (error) {
+    console.error('Error checking Google session:', error);
+    return res.status(500).json({
+      valid: false,
+      message: 'Server error checking Google verification session'
+    });
+  }
+};
+
+// All functions are now exported inline

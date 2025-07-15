@@ -1,7 +1,12 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { API_URL } from '../services/api';
 import useAuth from "../hooks/useAuth";
 import IdVerification from "./IdVerification";
+
+// Currently only supporting Bosnian ID verification
+const COUNTRY_CODE = 'BA';
+const COUNTRY_NAME = 'Bosnia and Herzegovina';
 
 const SignUp = () => {
   const [email, setEmail] = useState("");
@@ -10,6 +15,7 @@ const SignUp = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [idNumber, setIdNumber] = useState("");
+  const country = COUNTRY_CODE; // Only supporting Bosnia now
   const [error, setError] = useState("");
   const [verificationStep, setVerificationStep] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
@@ -57,30 +63,75 @@ const SignUp = () => {
   };
 
   // Handle ID verification completion
-  const handleVerificationComplete = (verified) => {
+  const handleVerificationComplete = async (verified, errorMessage) => {
     setIsVerified(verified);
     
     if (verified) {
-      // If verified, proceed with account creation
-      handleSignUp();
+      // If verified, proceed with account creation using direct API call
+      // to handle email verification redirection
+      try {
+        const response = await fetch(`${API_URL}/api/auth/signup`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            firstName, 
+            lastName, 
+            email, 
+            password, 
+            idNumber, 
+            country: COUNTRY_CODE 
+          }),
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to sign up');
+        }
+        
+        // Check if email verification is required
+        if (data.requiresEmailVerification) {
+          // Store user ID and email for the verification page
+          localStorage.setItem('pendingUserId', data.user.id);
+          localStorage.setItem('pendingEmail', data.user.email);
+          
+          // Redirect to email verification page
+          navigate(`/verify-email?userId=${data.user.id}&email=${encodeURIComponent(data.user.email)}`);
+          return;
+        }
+        
+        // Regular signup flow - store token and redirect
+        localStorage.setItem('authToken', data.token);
+        navigate("/dashboard");
+      } catch (err) {
+        setError(err.message || "Failed to sign up");
+      }
+    } else {
+      // If verification failed, display the error message and stay on verification screen
+      console.log('Verification failed:', errorMessage);
+      setError(errorMessage || "ID verification failed. Please ensure your information matches your ID card.");
+      // Don't redirect - let user see the error and try again
     }
   };
   
   // Handle form submission for registration after verification
-  const handleSignUp = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!isVerified) {
+      setError("You must complete ID verification before signing up");
+      return;
+    }
+    
     try {
-      const result = await signup(email, password, firstName, lastName, idNumber);
-      
-      if (result.success) {
-        // Registration successful - redirect to signin
-        navigate("/signin");
-      } else {
-        setError(result.error || "Failed to register. Please try again.");
-        setVerificationStep(false);
-      }
+      // Include country in signup process
+      await signup(firstName, lastName, email, password, idNumber, COUNTRY_CODE);
+      navigate("/"); // Redirect to dashboard after successful signup
     } catch (err) {
-      setError("An unexpected error occurred. Please try again.");
-      setVerificationStep(false);
+      setError(err.message || "Failed to sign up");
     }
   };
 
@@ -88,7 +139,7 @@ const SignUp = () => {
   const handleGoogleSignUp = () => {
     // This will be implemented through the useAuth hook
     // Redirect will be handled by the hook
-    window.location.href = "http://localhost:3000/auth/google";
+    window.location.href = `${API_URL}/auth/google`;
   };
 
   return (
@@ -187,19 +238,27 @@ const SignUp = () => {
               />
             </div>
             
-            <div>
-              <label htmlFor="idNumber" className="block text-sm font-medium text-black mb-1">
+            <div className="mb-4">
+              <div className="p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded">
+                <strong>Note:</strong> This service is currently only available for citizens of {COUNTRY_NAME}.
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <label htmlFor="idNumber" className="block text-gray-700 text-sm font-bold mb-2">
                 ID Number
               </label>
               <input
-                id="idNumber"
                 type="text"
+                id="idNumber"
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                 value={idNumber}
                 onChange={(e) => setIdNumber(e.target.value)}
-                className="px-4 py-2 rounded bg-white text-black placeholder-zinc-400 border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-black w-full"
                 placeholder="Enter your ID number"
-                required
               />
+              <p className="text-xs italic mt-1">
+                Format: Alphanumeric series from your Bosnian ID card (7-12 characters)
+              </p>
             </div>
 
             <button

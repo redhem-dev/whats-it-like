@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post Creation Activity Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'default',
+                flowchart: { useMaxWidth: false }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .diagram-container {
+            margin-top: 30px;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Post Creation Activity Diagram</h1>
+        
+        <div class="diagram-container">
+            <pre class="mermaid">
+                %%{init: {'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f0f8ff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
+                stateDiagram-v2
+                    [*] --> CheckAuthentication
+                    
+                    CheckAuthentication --> Unauthorized: Not Authenticated
+                    Unauthorized --> [*]: Redirect to Login
+                    
+                    CheckAuthentication --> VerifyLocation: Authenticated
+                    
+                    VerifyLocation --> LocationFailed: Location Not in Bosnia
+                    LocationFailed --> RetryLocation: Try Again
+                    RetryLocation --> VerifyLocation
+                    LocationFailed --> [*]: Cancel
+                    
+                    VerifyLocation --> ShowPostForm: Location Verified
+                    
+                    ShowPostForm --> ValidateForm: User Submits Form
+                    ValidateForm --> ShowFormErrors: Validation Failed
+                    ShowFormErrors --> ShowPostForm: Show Error Messages
+                    
+                    ValidateForm --> SubmitToServer: Form Valid
+                    
+                    SubmitToServer --> ServerValidation
+                    ServerValidation --> ShowServerErrors: Server Validation Failed
+                    ShowServerErrors --> ShowPostForm: Display Server Errors
+                    
+                    ServerValidation --> SavePost: Validation Passed
+                    SavePost --> UpdateUserPosts: Add to User's Posts
+                    UpdateUserPosts --> RedirectToDashboard: Success
+                    
+                    RedirectToDashboard --> [*]: Complete
+                    
+                    state if_dev <<choice>>
+                    VerifyLocation --> if_dev: Check Environment
+                    if_dev --> ShowPostForm: Development Mode
+                    if_dev --> CheckBrowserLocation: Production Mode
+                    
+                    CheckBrowserLocation --> CheckIPLocation: Browser Location Denied
+                    CheckBrowserLocation --> ValidateCoordinates: Browser Location Allowed
+                    
+                    ValidateCoordinates --> LocationVerified: In Bosnia
+                    ValidateCoordinates --> LocationFailed: Not in Bosnia
+                    
+                    CheckIPLocation --> LocationVerified: IP in Bosnia
+                    CheckIPLocation --> LocationFailed: IP not in Bosnia
+                    
+                    LocationVerified --> ShowPostForm
+            </pre>
+        </div>
+        
+        <div class="description">
+            <h3>Diagram Description:</h3>
+            <p>This activity diagram illustrates the post creation process in the "What's It Like" application:</p>
+            <ul>
+                <li><strong>Authentication Check:</strong> Verifies the user is logged in before allowing post creation</li>
+                <li><strong>Location Verification:</strong> A critical security step ensuring users are physically located in Bosnia and Herzegovina</li>
+                <li><strong>Development Mode Bypass:</strong> In development environments, location verification is bypassed for easier testing</li>
+                <li><strong>Form Validation:</strong> Client-side validation of post content, title, and other required fields</li>
+                <li><strong>Server Validation:</strong> Additional validation on the server side</li>
+                <li><strong>Post Creation:</strong> Saving the post to the database and associating it with the user</li>
+                <li><strong>Redirection:</strong> After successful creation, the user is redirected to the dashboard</li>
+            </ul>
+            <p>The diagram highlights the location verification process which is central to the application's functionality, ensuring content is created by users physically present in Bosnia and Herzegovina.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voting System Use Case Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'default',
+                flowchart: { useMaxWidth: false }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .diagram-container {
+            margin-top: 30px;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Voting System Use Case Diagram</h1>
+        
+        <div class="diagram-container">
+            <pre class="mermaid">
+                %%{init: {'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f0f8ff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
+                flowchart TB
+                    subgraph System["What's It Like Voting System"]
+                        UpvotePost["Upvote Post"]
+                        DownvotePost["Downvote Post"]
+                        RemoveVote["Remove Vote"]
+                        UpvoteReply["Upvote Reply"]
+                        DownvoteReply["Downvote Reply"]
+                        VerifyLocation["Verify User Location"]
+                        UpdateReputation["Update User Reputation"]
+                    end
+                    
+                    subgraph Actors
+                        User((Authenticated User))
+                        LocationAPI((Location API))
+                    end
+                    
+                    User -->|Can| UpvotePost
+                    User -->|Can| DownvotePost
+                    User -->|Can| RemoveVote
+                    User -->|Can| UpvoteReply
+                    User -->|Can| DownvoteReply
+                    
+                    UpvotePost -->|Requires| VerifyLocation
+                    DownvotePost -->|Requires| VerifyLocation
+                    UpvoteReply -->|Requires| VerifyLocation
+                    DownvoteReply -->|Requires| VerifyLocation
+                    
+                    VerifyLocation -->|Uses| LocationAPI
+                    
+                    UpvotePost -->|Triggers| UpdateReputation
+                    DownvotePost -->|Triggers| UpdateReputation
+                    UpvoteReply -->|Triggers| UpdateReputation
+                    DownvoteReply -->|Triggers| UpdateReputation
+                    
+                    style User fill:#f9f,stroke:#333,stroke-width:2px
+                    style LocationAPI fill:#bbf,stroke:#333,stroke-width:2px
+                    style System fill:#f5f5f5,stroke:#333,stroke-width:1px
+                    style VerifyLocation fill:#ffd700,stroke:#333,stroke-width:1px
+                    style UpdateReputation fill:#90ee90,stroke:#333,stroke-width:1px
+            </pre>
+        </div>
+        
+        <div class="description">
+            <h3>Diagram Description:</h3>
+            <p>This use case diagram illustrates the voting system in the "What's It Like" application:</p>
+            <ul>
+                <li><strong>Vote Actions:</strong> Users can upvote or downvote both posts and replies</li>
+                <li><strong>Vote Removal:</strong> Users can remove their previous votes</li>
+                <li><strong>Location Verification:</strong> All voting actions require verification that the user is physically located in Bosnia and Herzegovina</li>
+                <li><strong>Reputation System:</strong> Votes trigger updates to user reputation scores</li>
+                <li><strong>External Dependencies:</strong> The system relies on location APIs to verify user location</li>
+            </ul>
+            <p>The diagram emphasizes the mandatory location verification for all voting actions, which is a core security feature ensuring that only users physically present in Bosnia and Herzegovina can influence content ranking.</p>
+        </div>
+    </div>
+</body>
+</html>

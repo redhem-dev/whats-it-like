@@ -44,6 +44,25 @@ async function processIdCard(filePath) {
 }
 
 /**
+ * Validates if a string can be a valid ID number
+ * Ensures it contains at least one letter AND one number
+ * @param {string} str - String to validate as potential ID number
+ * @returns {boolean} True if valid, false otherwise 
+ */
+function isValidIdNumber(str) {
+  if (!str || typeof str !== 'string') return false;
+  
+  // Must contain at least one letter
+  const hasLetter = /[a-zA-Z]/.test(str);
+  
+  // Must contain at least one number
+  const hasNumber = /[0-9]/.test(str);
+  
+  // Must have both letters and numbers
+  return hasLetter && hasNumber;
+}
+
+/**
  * Parse raw text from ID card into structured data
  * @param {string} text - Raw text extracted from the ID card
  * @param {Object} options - Optional configuration to target specific fields
@@ -75,8 +94,8 @@ function parseIdCardData(text, options = {}) {
     
     // Words that should not be in names
     excludeFromNames: [
-      'bosna', 'hercegovina', 'identity', 'card', 'lična karta', 'osobna iskaznica',
-      'prezime', 'ime', 'surname', 'given name', 'potpis', 'signature'
+      'bosna', 'hercegovina', 'bosna i hercegovina', 'identity', 'card', 'lična karta', 'osobna iskaznica',
+      'prezime', 'ime', 'surname', 'given name', 'potpis', 'signature', 'citizenship', 'državljanstvo'
     ],
     ...options
   };
@@ -365,23 +384,37 @@ function parseIdCardData(text, options = {}) {
                 }
               }
               
-              // If we found a pattern match, use it
+              // If we found a pattern match, use it and validate
               if (idMatch) {
-                result.idNumber = idMatch.replace(/\s+|-/g, ''); // Clean spaces/dashes
-                confidenceScores.push(0.98); // Highest confidence - labeled + pattern
-                idFound = true;
-                break;
+                const cleanId = idMatch.replace(/\s+|-/g, ''); // Clean spaces/dashes
+                if (isValidIdNumber(cleanId)) {
+                  result.idNumber = cleanId;
+                  confidenceScores.push(0.98); // Highest confidence - labeled + pattern
+                  idFound = true;
+                  console.log('  Valid ID number found:', cleanId);
+                  break;
+                } else {
+                  console.log('  Invalid ID format (needs letters AND numbers):', cleanId);
+                }
               }
               
-              // If no pattern match, but line is alphanumeric and not too long, use it
+              // If no pattern match, but line is alphanumeric, not too long, and has valid ID format
               if (/[A-Z0-9]/.test(potentialIdLine) && 
                   potentialIdLine.length <= 15 &&
-                  !/prezime|ime|surname|given name|signature|potpis/i.test(potentialIdLine)) {
-                result.idNumber = potentialIdLine.replace(/\s+|-/g, '');
-                console.log('  Using entire line as ID:', result.idNumber);
-                confidenceScores.push(0.85);
-                idFound = true;
-                break;
+                  !/prezime|ime|surname|given name|signature|potpis|bosna|hercegovina/i.test(potentialIdLine)) {
+                
+                const cleanId = potentialIdLine.replace(/\s+|-/g, '');
+                
+                // Check if it's a valid ID (contains both letters AND numbers)
+                if (isValidIdNumber(cleanId)) {
+                  result.idNumber = cleanId;
+                  console.log('  Using entire line as valid ID:', result.idNumber);
+                  confidenceScores.push(0.8); // Good confidence - right after label
+                  idFound = true;
+                  break;
+                } else {
+                  console.log('  Rejecting invalid ID format:', cleanId, '(needs both letters AND numbers)');
+                }
               }
             }
           }
@@ -404,11 +437,18 @@ function parseIdCardData(text, options = {}) {
           for (const pattern of bosnianIdPatterns) {
             const matches = line.match(pattern);
             if (matches && matches[0]) {
-              result.idNumber = matches[0].replace(/\s+|-/g, ''); // Clean spaces/dashes
-              console.log('Found ID number by pattern in line:', result.idNumber);
-              confidenceScores.push(0.9);
-              idFound = true;
-              break;
+              const cleanId = matches[0].replace(/\s+|-/g, ''); // Clean spaces/dashes
+              
+              // Validate ID format (must have both letters and numbers)
+              if (isValidIdNumber(cleanId)) {
+                result.idNumber = cleanId;
+                console.log('Found valid ID number by pattern in line:', result.idNumber);
+                confidenceScores.push(0.9);
+                idFound = true;
+                break;
+              } else {
+                console.log('Rejecting invalid ID format (needs both letters AND numbers):', cleanId);
+              }
             }
           }
           
@@ -495,9 +535,17 @@ function parseIdCardData(text, options = {}) {
       // IDs often have specific patterns (adjust based on your country's ID format)
       const matches = line.match(/[A-Z0-9]{6,}/);
       if (matches && matches[0]) {
-        result.idNumber = matches[0].trim();
-        confidenceScores.push(0.4); // Lower confidence for general pattern match
-        break;
+        const potentialId = matches[0].trim();
+        
+        // Validate the ID format (must have at least one letter AND one number)
+        if (isValidIdNumber(potentialId)) {
+          result.idNumber = potentialId;
+          console.log('Found valid ID in fallback search:', potentialId);
+          confidenceScores.push(0.4); // Lower confidence for general pattern match
+          break;
+        } else {
+          console.log('Rejecting invalid ID in fallback search:', potentialId);
+        }
       }
     }
   }

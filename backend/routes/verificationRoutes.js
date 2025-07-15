@@ -14,4 +14,10 @@ router.post('/match-data', verificationController.verifyUserData);
 // Check verification status
 router.get('/status', verificationController.checkVerificationStatus);
 
+// Handle Google user verification after ID check
+router.post('/google-user', verificationController.verifyGoogleUser);
+
+// Check Google verification session validity
+router.get('/google-session', verificationController.checkGoogleSession);
+
 module.exports = router;

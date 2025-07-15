@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useState, useEffect, useContext } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { useNavigate } from 'react-router-dom';
+import UserHoverCard from '../components/UserHoverCard';
 import useAuth from '../hooks/useAuth';
+import { API_URL } from '../services/api';
+import { LocationContext } from '../contexts/LocationContext';
+import MockAd from '../components/ads/MockAd';
 
 const SinglePostPage = () => {
   const { postId } = useParams();
@@ -22,15 +25,21 @@ const SinglePostPage = () => {
   // Format user data from auth context
   useEffect(() => {
     if (authUser) {
+      // Ensure all necessary fields for Navbar to properly display initials
       const formattedUser = {
+        ...authUser,
         id: authUser.id || authUser._id,
-        email: authUser.email,
+        email: authUser.email || '',
+        // Make sure firstName and lastName are available at both root and personalInfo levels
+        firstName: authUser.personalInfo?.firstName || authUser.firstName || '',
+        lastName: authUser.personalInfo?.lastName || authUser.lastName || '',
         personalInfo: {
+          ...(authUser.personalInfo || {}),
           firstName: authUser.personalInfo?.firstName || authUser.firstName || '',
           lastName: authUser.personalInfo?.lastName || authUser.lastName || ''
         },
         status: authUser.status || '',
-        reputation: authUser.reputation || 0
+        reputation: authUser.reputation || { score: 50 }
       };
       setUser(formattedUser);
     }
@@ -68,7 +77,7 @@ const SinglePostPage = () => {
         }
         
         // Make the API request
-        const response = await fetch(`http://localhost:3000/api/posts/${postId}`, { headers });
+        const response = await fetch(`${API_URL}/api/posts/${postId}`, { headers });
         
         if (!response.ok) {
           throw new Error('Failed to fetch post');
@@ -113,7 +122,7 @@ const SinglePostPage = () => {
           headers['Authorization'] = `Bearer ${token}`;
         }
         
-        const response = await fetch(`http://localhost:3000/api/posts/${postId}/replies`, { headers });
+        const response = await fetch(`${API_URL}/api/posts/${postId}/replies`, { headers });
         
         if (!response.ok) {
           throw new Error('Failed to fetch replies');
@@ -169,6 +178,24 @@ const SinglePostPage = () => {
       setError('You must be logged in to vote');
       return;
     }
+    
+    // Verify user location before allowing vote
+    if (!locationVerified) {
+      try {
+        // Attempt to verify location
+        setError('Verifying your location...');
+        const locationAllowed = await verifyLocation();
+        
+        if (!locationAllowed) {
+          setError('Voting is only allowed for users physically located in Bosnia and Herzegovina.');
+          return;
+        }
+      } catch (error) {
+        console.error('Location verification failed:', error);
+        setError('Location verification failed. Voting is only allowed for users physically located in Bosnia and Herzegovina.');
+        return;
+      }
+    }
 
     // Save current vote state to revert if API call fails
     const previousVote = post.userVote;
@@ -184,7 +211,7 @@ const SinglePostPage = () => {
     try {
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`http://localhost:3000/api/posts/${postId}/vote`, {
+      const response = await fetch(`${API_URL}/api/posts/${postId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -194,11 +221,22 @@ const SinglePostPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Handle location verification error
+        if (response.status === 403 && errorData.locationRequired) {
+          setError('Voting is only allowed for users physically located in Bosnia and Herzegovina.');
+          return;
+        }
+        
+        throw new Error(errorData.message || `Error: ${response.statusText}`);
       }
 
       // Use the vote response to update the post
       const result = await response.json();
+      
+      // Clear any error messages on successful vote
+      setError('');
       
       setPost(prevPost => ({
         ...prevPost,
@@ -217,10 +255,31 @@ const SinglePostPage = () => {
   };
 
   // Function to handle voting on reply
+  // Get location context for verification
+  const { locationVerified, verifyLocation } = useContext(LocationContext);
+
   const handleReplyVote = async (replyId, voteType) => {
     if (!currentUserId) {
       setReplyError('You must be logged in to vote');
       return;
+    }
+
+    // Verify user location before allowing vote
+    if (!locationVerified) {
+      try {
+        // Attempt to verify location
+        setReplyError('Verifying your location...');
+        const locationAllowed = await verifyLocation();
+        
+        if (!locationAllowed) {
+          setReplyError('Voting is only allowed for users physically located in Bosnia and Herzegovina.');
+          return;
+        }
+      } catch (error) {
+        console.error('Location verification failed:', error);
+        setReplyError('Location verification failed. Voting is only allowed for users physically located in Bosnia and Herzegovina.');
+        return;
+      }
     }
 
     // Find the reply
@@ -241,7 +300,7 @@ const SinglePostPage = () => {
     try {
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`http://localhost:3000/api/replies/${replyId}/vote`, {
+      const response = await fetch(`${API_URL}/api/replies/${replyId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -251,11 +310,22 @@ const SinglePostPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Handle location verification error
+        if (response.status === 403 && errorData.locationRequired) {
+          setReplyError('Voting is only allowed for users physically located in Bosnia and Herzegovina.');
+          return;
+        }
+        
+        throw new Error(errorData.message || `Error: ${response.statusText}`);
       }
 
       // Use the vote response to update just this reply
       const result = await response.json();
+      
+      // Clear any error messages on successful vote
+      setReplyError('');
       
       setReplies(prevReplies => {
         return prevReplies.map(r => {
@@ -385,7 +455,7 @@ const SinglePostPage = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:3000/api/replies/${replyId}`, {
+      const response = await fetch(`${API_URL}/api/replies/${replyId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -448,6 +518,9 @@ const SinglePostPage = () => {
       <Navbar user={user} />
       
       <main className="max-w-4xl mx-auto py-8 px-4">
+        {/* Top Banner Ad */}
+        <MockAd type="banner" label="Article Banner Ad" />
+        <div className="mb-6"></div>
         {/* Post */}
         <div className="bg-white shadow rounded-lg overflow-hidden mb-8">
           <div className="p-6">
@@ -455,7 +528,16 @@ const SinglePostPage = () => {
               <div className="flex-1">
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">{post.title}</h1>
                 <div className="flex items-center text-sm text-gray-500 mb-4">
-                  <span>Posted by {post.author.personalInfo.firstName} {post.author.personalInfo.lastName}</span>
+                  <span>Posted by </span>
+                  <UserHoverCard 
+                    userId={post.authorId._id} 
+                    userName={`${post.author.personalInfo.firstName} ${post.author.personalInfo.lastName}`}
+                    userEmail={post.author.email}
+                  >
+                    <Link to={`/profile/${post.authorId._id}`} className="text-blue-600 hover:underline ml-1 mr-1">
+                      {post.author.personalInfo.firstName} {post.author.personalInfo.lastName}
+                    </Link>
+                  </UserHoverCard>
                   <span className="mx-2">•</span>
                   <span>{formatDate(post.createdAt)}</span>
                   <span className="mx-2">•</span>
@@ -524,6 +606,9 @@ const SinglePostPage = () => {
           </div>
         </div>
         
+        {/* Ad between post and reply form */}
+        <MockAd type="rectangle" label="In-article Advertisement" />
+        
         {/* Reply form */}
         <div className="bg-white shadow rounded-lg overflow-hidden mb-8">
           <div className="p-6">
@@ -559,6 +644,9 @@ const SinglePostPage = () => {
           </div>
         </div>
         
+        {/* Ad between reply form and replies section */}
+        <MockAd type="rectangle" label="Discussion Promo" />
+        
         {/* Replies section */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="p-6">
@@ -581,33 +669,47 @@ const SinglePostPage = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                {sortedReplies.map(reply => (
-                  <div key={reply._id} className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
-                    <div className="p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center text-sm text-gray-500 mb-2">
-                            <span className="font-medium">{reply.author.personalInfo.firstName} {reply.author.personalInfo.lastName}</span>
-                            <span className="mx-2">•</span>
-                            <span>{formatDate(reply.createdAt)}</span>
+                {sortedReplies.map((reply, index) => (
+                  <React.Fragment key={reply._id}>
+                    {/* Insert ad after every 4 replies */}
+                    {index > 0 && index % 4 === 0 && (
+                      <MockAd type="rectangle" label={`Discussion Ad #${Math.ceil(index/4)}`} />
+                    )}
+                    <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
+                      <div className="p-6">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center text-sm text-gray-500 mb-2">
+                              <UserHoverCard 
+                                userId={reply.author._id} 
+                                userName={`${reply.author.personalInfo.firstName} ${reply.author.personalInfo.lastName}`}
+                                userEmail={reply.author.email}
+                              >
+                                <Link to={`/profile/${reply.author._id}`} className="font-medium text-blue-600 hover:underline">
+                                  {reply.author.personalInfo.firstName} {reply.author.personalInfo.lastName}
+                                </Link>
+                              </UserHoverCard>
+                              <span className="mx-2">•</span>
+                              <span>{formatDate(reply.createdAt)}</span>
+                            </div>
+                            <div className="prose max-w-none">
+                              {reply.content}
+                            </div>
                           </div>
-                          <div className="prose max-w-none">
-                            {reply.content}
-                          </div>
-                        </div>
                         
-                        {/* Delete button for reply owner */}
-                        {currentUserId && reply.author._id === currentUserId && (
-                          <button
-                            onClick={() => handleDeleteReply(reply._id)}
-                            className="text-red-500 hover:text-red-700"
-                            title="Delete reply"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
+                          {/* Delete button for reply owner */}
+                          {currentUserId && reply.author._id === currentUserId && (
+                            <button
+                              onClick={() => handleDeleteReply(reply._id)}
+                              className="text-red-500 hover:text-red-700"
+                              title="Delete reply"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       </div>
                       
                       {/* Reply voting */}
@@ -640,7 +742,7 @@ const SinglePostPage = () => {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </React.Fragment>
                 ))}
               </div>
             )}

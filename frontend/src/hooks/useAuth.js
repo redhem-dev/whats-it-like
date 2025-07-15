@@ -1,7 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-
-// API base URL
-const API_URL = 'http://localhost:3000';
+import { API_URL } from '../services/api';
 
 /**
  * Authentication hook for handling user signup and login
@@ -30,7 +28,7 @@ const useAuth = () => {
   }, [token]);
 
   // Signup with email and password
-  const signup = useCallback(async (email, password, firstName, lastName, idNumber = '') => {
+  const signup = useCallback(async (firstName, lastName, email, password, idNumber = '', country = 'BA') => {
     setLoading(true);
     setError(null);
     
@@ -40,7 +38,7 @@ const useAuth = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password, firstName, lastName, idNumber }),
+        body: JSON.stringify({ firstName, lastName, email, password, idNumber, country }),
         credentials: 'include', // Include cookies for session handling
       });
       

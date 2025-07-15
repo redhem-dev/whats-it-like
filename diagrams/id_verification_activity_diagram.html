@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Verification Activity Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'default',
+                flowchart: { useMaxWidth: false }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .diagram-container {
+            margin-top: 30px;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ID Verification Activity Diagram</h1>
+        
+        <div class="diagram-container">
+            <pre class="mermaid">
+                %%{init: {'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f0f8ff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
+                stateDiagram-v2
+                    [*] --> InitiateVerification
+                    
+                    InitiateVerification --> GoogleAuth: Google Registration Flow
+                    InitiateVerification --> StandardAuth: Standard Registration Flow
+                    
+                    GoogleAuth --> StoreSessionData: Temporary Storage
+                    StoreSessionData --> ShowIDUploadForm
+                    
+                    StandardAuth --> ShowIDUploadForm
+                    
+                    ShowIDUploadForm --> UploadIDCard: User Uploads ID
+                    
+                    UploadIDCard --> ProcessImage: Send to Server
+                    ProcessImage --> RunOCR: Extract Text
+                    
+                    RunOCR --> DetectIDType: Analyze Text
+                    
+                    DetectIDType --> ProcessBosnianID: Bosnian ID Detected
+                    
+                    ProcessBosnianID --> ExtractIDNumber: Get ID Number
+                    ProcessBosnianID --> ExtractName: Get Name
+                    
+                    ExtractIDNumber --> ValidateIDFormat: Check Format
+                    
+                    state if_valid_id <<choice>>
+                    ValidateIDFormat --> if_valid_id
+                    if_valid_id --> VerificationFailed: Invalid Format
+                    if_valid_id --> CheckIDExists: Valid Format
+                    
+                    state if_id_exists <<choice>>
+                    CheckIDExists --> if_id_exists
+                    if_id_exists --> VerificationFailed: ID Already Registered
+                    if_id_exists --> CreateUserAccount: ID Not Registered
+                    
+                    CreateUserAccount --> GenerateAvatar: Create Initials Avatar
+                    GenerateAvatar --> SetupUserProfile
+                    
+                    SetupUserProfile --> VerificationSuccess
+                    
+                    VerificationSuccess --> [*]: Complete Registration
+                    VerificationFailed --> ShowError: Display Error Message
+                    ShowError --> ShowIDUploadForm: Try Again
+                    
+                    ShowIDUploadForm --> CancelVerification: User Cancels
+                    CancelVerification --> [*]: Abort Registration
+            </pre>
+        </div>
+        
+        <div class="description">
+            <h3>Diagram Description:</h3>
+            <p>This activity diagram illustrates the ID verification process in the "What's It Like" application:</p>
+            <ul>
+                <li><strong>Multiple Entry Points:</strong> The verification can be initiated from either standard registration or after Google authentication</li>
+                <li><strong>ID Upload:</strong> Users must upload an image of their Bosnian ID card</li>
+                <li><strong>OCR Processing:</strong> The system uses optical character recognition to extract text from the ID image</li>
+                <li><strong>Bosnian ID Focus:</strong> The system specifically processes Bosnian ID cards, extracting the ID number and name</li>
+                <li><strong>Validation Checks:</strong>
+                    <ul>
+                        <li>ID format validation to ensure it matches Bosnian ID patterns</li>
+                        <li>Duplicate checking to prevent multiple accounts with the same ID</li>
+                    </ul>
+                </li>
+                <li><strong>Account Creation:</strong> Upon successful verification, the system creates the user account</li>
+                <li><strong>Avatar Generation:</strong> The system generates an avatar using the user's initials from their verified name</li>
+            </ul>
+            <p>The diagram highlights the mandatory ID verification step that ensures users are from Bosnia and Herzegovina, and the consistent avatar generation using the verified name information.</p>
+        </div>
+    </div>
+</body>
+</html>

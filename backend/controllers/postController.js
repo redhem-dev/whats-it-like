@@ -2,6 +2,7 @@
 
 const Post = require('../models/Post');
 const User = require('../models/User');
+const { updateReputationForPostVoters } = require('../services/reputationService');
 
 /**
  * Create a new post
@@ -10,28 +11,39 @@ const User = require('../models/User');
  */
 exports.createPost = async (req, res) => {
   try {
-    const { title, content, country, city, tags } = req.body;
+    const { title, content, location, tags } = req.body;
+    
+    // Log the request body for debugging
+    console.log('Create post request:', { title, content, location, tags });
     
     // Basic validation
     if (!title || !content) {
       return res.status(400).json({ message: 'Title and content are required' });
     }
 
-    if (!country || !city) {
+    // Check if location data is provided correctly
+    if (!location || !location.country || !location.city) {
       return res.status(400).json({ message: 'Country and city are required' });
     }
     
     // For MVP, we're skipping the AI moderation step
     // Note: In the full implementation, we would call an AI moderation API here
     
+    // Make sure we have the user ID from the auth middleware
+    if (!req.user || !req.user.userId) {
+      console.error('User ID missing from request:', req.user);
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    
     const newPost = new Post({
-      authorId: req.user._id,
+      authorId: req.user.userId, // Use userId from auth middleware instead of _id
       title,
       content,
       tags: Array.isArray(tags) ? tags : [], // Ensure tags is an array
       location: {
-        country,
-        city
+        country: location.country,
+        city: location.city,
+        verified: location.verified || false
       },
       status: 'approved', // Auto-approve for MVP
       votes: {
@@ -41,17 +53,78 @@ exports.createPost = async (req, res) => {
       }
     });
     
+    console.log('Creating post with location:', newPost.location);
+    console.log('Creating post with authorId:', newPost.authorId);
+    
     const post = await newPost.save();
     
     // Add post reference to user's posts array
     await User.findByIdAndUpdate(
-      req.user._id,
+      req.user.userId, // Use userId from auth middleware
       { $push: { posts: post._id } }
     );
     
     res.status(201).json(post);
   } catch (error) {
     console.error('Create post error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Get trending posts from a specified time period
+ * @route GET /api/posts/trending
+ * Public route
+ */
+exports.getTrendingPosts = async (req, res) => {
+  try {
+    const { limit = 5, since, days = 2 } = req.query;
+    
+    // Calculate date based on the 'days' parameter or use provided 'since' date
+    // Default is 2 days for dashboard widget, 10 days for trending page
+    const daysInMilliseconds = parseInt(days) * 24 * 60 * 60 * 1000;
+    const sinceDate = since ? new Date(since) : new Date(Date.now() - daysInMilliseconds);
+    
+    // Build query for posts created in the last 2 days
+    const query = { 
+      status: 'approved', // Only return approved posts
+      createdAt: { $gte: sinceDate }
+    };
+    
+    // Find posts and sort by total votes (upvotes + downvotes)
+    const posts = await Post.find(query)
+      .sort({ 'votes.upvotes': -1, 'votes.downvotes': -1 }) // Most votes first
+      .limit(Number(limit))
+      .populate({
+        path: 'authorId',
+        select: 'firstName lastName personalInfo',
+        model: 'User'
+      });
+    
+    // Transform posts to include author details
+    const formattedPosts = posts.map(post => {
+      const formattedPost = post.toObject();
+      
+      // Format author information
+      if (formattedPost.authorId) {
+        formattedPost.author = {
+          _id: formattedPost.authorId._id,
+          personalInfo: {
+            firstName: formattedPost.authorId.firstName || 
+                      (formattedPost.authorId.personalInfo && formattedPost.authorId.personalInfo.firstName) || '',
+            lastName: formattedPost.authorId.lastName || 
+                     (formattedPost.authorId.personalInfo && formattedPost.authorId.personalInfo.lastName) || ''
+          }
+        };
+        delete formattedPost.authorId;
+      }
+      
+      return formattedPost;
+    });
+    
+    res.json({ posts: formattedPosts });
+  } catch (error) {
+    console.error('Get trending posts error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -273,8 +346,42 @@ exports.voteOnPost = async (req, res) => {
       return res.status(400).json({ message: 'Invalid vote type' });
     }
     
-    // For MVP, we're skipping the location verification
-    // Note: In the full implementation, we would verify the user's location here
+    // First verify user's location - must be in Bosnia and Herzegovina to vote
+    const locationService = require('../services/locationService');
+    
+    // Get client IP or use coordinates if provided
+    const { latitude, longitude } = req.body;
+    let locationData;
+    
+    // Check if we're in development mode with localhost
+    const clientIP = locationService.getClientIP(req);
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const isLocalhost = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'].includes(clientIP);
+    
+    if (isDevelopment && isLocalhost) {
+      // In development mode with localhost IP, bypass location verification
+      console.log('Development mode: Bypassing location verification for voting');
+      locationData = {
+        country: locationService.ALLOWED_COUNTRY_CODE,
+        city: 'Development',
+        source: 'development-bypass',
+        allowed: true
+      };
+    } else if (latitude && longitude) {
+      // Verify using coordinates from browser geolocation
+      locationData = await locationService.verifyCoordinates(latitude, longitude);
+    } else {
+      // Fallback to IP-based verification
+      locationData = await locationService.verifyIPLocation(clientIP);
+    }
+    
+    // Check if user is in allowed country (Bosnia and Herzegovina)
+    if (!locationData.allowed) {
+      return res.status(403).json({
+        message: 'Voting is only allowed for users physically located in Bosnia and Herzegovina.',
+        locationRequired: true
+      });
+    }
     
     const post = await Post.findById(postId);
     
@@ -282,13 +389,18 @@ exports.voteOnPost = async (req, res) => {
       return res.status(404).json({ message: 'Post not found' });
     }
     
+    // Check if user is authenticated
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    
     // Check if user has already voted
-    const hasVoted = post.votes.voterIds.includes(req.user._id);
+    const hasVoted = post.votes.voterIds.includes(req.user.userId);
     
     // Get user's current vote if any
     const userVote = hasVoted ? 
       await User.findOne({ 
-        _id: req.user._id, 
+        _id: req.user.userId, 
         'votes.postId': postId 
       }, { 'votes.$': 1 }) : null;
     
@@ -306,12 +418,12 @@ exports.voteOnPost = async (req, res) => {
         
         // Remove user ID from voters list
         post.votes.voterIds = post.votes.voterIds.filter(
-          id => id.toString() !== req.user._id.toString()
+          id => id.toString() !== req.user.userId.toString()
         );
         
         // Remove vote from user's voting history
         await User.findOneAndUpdate(
-          { _id: req.user._id, 'votes.postId': postId },
+          { _id: req.user.userId, 'votes.postId': postId },
           { $pull: { votes: { postId: postId } } }
         );
       } else {
@@ -331,10 +443,10 @@ exports.voteOnPost = async (req, res) => {
       } else {
         post.votes.downvotes += 1;
       }
-      post.votes.voterIds.push(req.user._id);
+      post.votes.voterIds.push(req.user.userId);
       
       // Add vote to user's voting history
-      await User.findByIdAndUpdate(req.user._id, {
+      await User.findByIdAndUpdate(req.user.userId, {
         $push: { votes: { postId, vote: voteType } }
       });
     } else if (currentVote !== voteType) {
@@ -349,12 +461,18 @@ exports.voteOnPost = async (req, res) => {
       
       // Update user's vote in voting history
       await User.findOneAndUpdate(
-        { _id: req.user._id, 'votes.postId': postId },
+        { _id: req.user.userId, 'votes.postId': postId },
         { $set: { 'votes.$.vote': voteType } }
       );
     }
     
     await post.save();
+    
+    // Update reputation for users who voted on this post
+    // This is done asynchronously to not block the response
+    updateReputationForPostVoters(postId).catch(err => {
+      console.error('Error updating reputation:', err);
+    });
     
     res.json({ 
       message: 'Vote recorded successfully',

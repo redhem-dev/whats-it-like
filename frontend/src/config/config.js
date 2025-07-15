@@ -2,5 +2,8 @@
  * Application configuration
  */
 
-// API base URL
-export const API_URL = 'http://localhost:3000';
+// Import API_URL from centralized location
+import { API_URL } from '../services/api';
+
+// Re-export for backward compatibility
+export { API_URL };

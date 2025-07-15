@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, Link } from 'react-router-dom';
+import { API_URL } from '../services/api';
 import Navbar from '../components/Navbar';
 import useAuth from '../hooks/useAuth';
 
@@ -20,7 +21,7 @@ const SearchResults = () => {
     
     if (token) {
       // Fetch user data from API
-      fetch('http://localhost:3000/api/auth/me', {
+      fetch(`${API_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -54,7 +55,7 @@ const SearchResults = () => {
           headers['Authorization'] = `Bearer ${token}`;
         }
         
-        const response = await fetch(`http://localhost:3000/api/posts/search?query=${encodeURIComponent(query)}`, {
+        const response = await fetch(`${API_URL}/api/posts/search?query=${encodeURIComponent(query)}`, {
           headers
         });
         
@@ -98,7 +99,7 @@ const SearchResults = () => {
         finalVoteValue = 0;
       }
       
-      const response = await fetch(`http://localhost:3000/api/posts/${postId}/vote`, {
+      const response = await fetch(`${API_URL}/api/posts/${postId}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

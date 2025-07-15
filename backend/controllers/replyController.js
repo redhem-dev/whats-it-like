@@ -21,7 +21,7 @@ exports.createReply = async (req, res) => {
     // Create new reply
     const reply = new Reply({
       postId,
-      authorId: req.user._id,  // From auth middleware
+      authorId: req.user.userId,  // From auth middleware - using consistent userId property
       content
     });
     
@@ -106,6 +106,30 @@ exports.getRepliesByPostId = async (req, res) => {
  */
 exports.voteOnReply = async (req, res) => {
   try {
+    // First verify user's location - must be in Bosnia and Herzegovina to vote
+    const locationService = require('../services/locationService');
+    
+    // Get client IP or use coordinates if provided
+    const { latitude, longitude } = req.body;
+    let locationData;
+    
+    if (latitude && longitude) {
+      // Verify using coordinates from browser geolocation
+      locationData = await locationService.verifyCoordinates(latitude, longitude);
+    } else {
+      // Fallback to IP-based verification
+      const clientIP = locationService.getClientIP(req);
+      locationData = await locationService.verifyIPLocation(clientIP);
+    }
+    
+    // Check if user is in allowed country (Bosnia and Herzegovina)
+    if (!locationData.allowed) {
+      return res.status(403).json({
+        message: 'Voting is only allowed for users physically located in Bosnia and Herzegovina.',
+        locationRequired: true
+      });
+    }
+    
     const { voteType } = req.body; // 1 for upvote, -1 for downvote, 0 for removing vote
     const replyId = req.params.id;
     

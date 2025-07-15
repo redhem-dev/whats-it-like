@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from '../services/api';
 import useAuth from "../hooks/useAuth";
 
 const SignIn = () => {
@@ -14,22 +15,46 @@ const SignIn = () => {
     setError("");
     
     try {
-      const result = await login(email, password);
+      // Direct API call instead of using the hook to handle email verification redirect
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+        credentials: 'include'
+      });
       
-      if (result.success) {
-        // Login successful - redirect to home or dashboard
-        navigate("/");  // Change this to your dashboard route later
-      } else {
-        setError(result.error || "Failed to sign in. Please try again.");
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to login');
       }
+      
+      // Check if email verification is required
+      if (data.requiresEmailVerification) {
+        // Store user ID and email for the verification page
+        localStorage.setItem('pendingUserId', data.userId);
+        localStorage.setItem('pendingEmail', data.email);
+        
+        // Redirect to email verification page
+        navigate(`/verify-email?userId=${data.userId}&email=${encodeURIComponent(data.email)}`);
+        return;
+      }
+      
+      // Regular login flow - store token and redirect
+      localStorage.setItem('authToken', data.token);
+      
+      // Force reload of the app to ensure the token is properly applied
+      window.location.href = '/dashboard';
     } catch (err) {
-      setError("An unexpected error occurred. Please try again.");
+      setError(err.message || "Failed to sign in. Please try again.");
     }
   };
 
   const handleGoogleSignIn = () => {
     // This will redirect to Google OAuth
-    window.location.href = "http://localhost:3000/auth/google";
+    window.location.href = `${API_URL}/auth/google`;
   };
 
   return (

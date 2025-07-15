@@ -33,7 +33,11 @@ module.exports = async (req, res, next) => {
     }
     
     // Attach user to request object
-    req.user = user;
+    req.user = {
+      userId: user._id,
+      email: user.email,
+      status: user.status
+    };
     req.token = token;
     
     next();

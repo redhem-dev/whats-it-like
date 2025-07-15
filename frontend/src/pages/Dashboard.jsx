@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import useAuth from '../hooks/useAuth';
+import { API_URL } from '../services/api';
+import UserHoverCard from '../components/UserHoverCard';
+import MockAd from '../components/ads/MockAd';
 
 // Keep mock user and trending posts for now
 const mockUser = {
@@ -71,13 +74,11 @@ const mockTrendingPosts = [
   }
 ];
 
-// Mock locations for filtering
-const mockLocations = [
-  { country: 'United States', cities: ['New York', 'Los Angeles', 'Chicago', 'Houston'] },
-  { country: 'United Kingdom', cities: ['London', 'Manchester', 'Birmingham', 'Edinburgh'] },
-  { country: 'Canada', cities: ['Toronto', 'Vancouver', 'Montreal', 'Calgary'] },
-  { country: 'Australia', cities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth'] },
-  { country: 'Germany', cities: ['Berlin', 'Munich', 'Hamburg', 'Cologne'] }
+// Bosnian cities for filtering
+const bosnianCities = [
+  'Sarajevo', 'Banja Luka', 'Tuzla', 'Zenica', 'Mostar', 'Bijeljina', 'Brčko', 'Prijedor', 
+  'Doboj', 'Cazin', 'Bihać', 'Travnik', 'Gradačac', 'Gradiška', 'Sanski Most', 'Velika Kladuša', 
+  'Goražde', 'Livno', 'Trebinje', 'Derventa', 'Visoko', 'Gračanica', 'Lukavac', 'Bugojno', 'Konjic'
 ];
 
 // Mock tags for filtering
@@ -90,7 +91,8 @@ const mockTags = [
 const Dashboard = () => {
   const { user: authUser } = useAuth();
   const [user, setUser] = useState(null);
-  const [trendingPosts, setTrendingPosts] = useState(mockTrendingPosts);
+  const [trendingPosts, setTrendingPosts] = useState([]);
+  const [loadingTrending, setLoadingTrending] = useState(true);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -98,7 +100,6 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUserId, setCurrentUserId] = useState(null);
   const [filters, setFilters] = useState({
-    country: '',
     city: '',
     tags: []
   });
@@ -106,20 +107,56 @@ const Dashboard = () => {
   // Use real user data when available
   useEffect(() => {
     if (authUser) {
+      console.log('Dashboard received authUser:', authUser);
       const formattedUser = {
         id: authUser.id || authUser._id,
         email: authUser.email,
+        firstName: authUser.firstName || authUser.personalInfo?.firstName || '',
+        lastName: authUser.lastName || authUser.personalInfo?.lastName || '',
         personalInfo: {
-          firstName: authUser.personalInfo?.firstName || authUser.firstName || '',
-          lastName: authUser.personalInfo?.lastName || authUser.lastName || ''
+          firstName: authUser.firstName || authUser.personalInfo?.firstName || '',
+          lastName: authUser.lastName || authUser.personalInfo?.lastName || ''
         },
-        status: authUser.status,
+        status: authUser.status || 'active',
         reputation: authUser.reputation || 0
       };
+      console.log('Dashboard setting formatted user:', formattedUser);
       setUser(formattedUser);
+      
+      // Also store in localStorage for persistence
+      localStorage.setItem('userData', JSON.stringify(formattedUser));
+      
+      // Generate and store proper initials for avatar using firstName and lastName
+      let initials = '';
+      if (formattedUser.firstName && formattedUser.lastName) {
+        initials = `${formattedUser.firstName.charAt(0)}${formattedUser.lastName.charAt(0)}`.toUpperCase();
+      } else if (formattedUser.firstName) {
+        initials = `${formattedUser.firstName.charAt(0)}`.toUpperCase();
+      } else if (formattedUser.email) {
+        const emailParts = formattedUser.email.split('@');
+        initials = emailParts[0].substring(0, 2).toUpperCase();
+      }
+      
+      if (initials) {
+        console.log('Setting user initials:', initials);
+        localStorage.setItem('userInitials', initials);
+      }
     } else {
-      // Fall back to mock data only during development
-      setUser(mockUser);
+      // Try to get user from localStorage if available
+      const cachedUser = localStorage.getItem('userData');
+      if (cachedUser) {
+        try {
+          const parsedUser = JSON.parse(cachedUser);
+          setUser(parsedUser);
+          console.log('Dashboard using cached user data:', parsedUser);
+        } catch (e) {
+          console.error('Failed to parse cached user data:', e);
+          setUser(mockUser);
+        }
+      } else {
+        // Fall back to mock data only during development
+        setUser(mockUser);
+      }
     }
   }, [authUser]);
 
@@ -135,6 +172,61 @@ const Dashboard = () => {
       }
     }
   }, []);
+  
+  // Fetch trending posts from the last 2 days
+  useEffect(() => {
+    const fetchTrendingPosts = async () => {
+      try {
+        setLoadingTrending(true);
+        
+        // Get authentication token for protected endpoints
+        const token = localStorage.getItem('authToken');
+        
+        // Calculate date 10 days ago for trending posts
+        const tenDaysAgo = new Date();
+        tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+        
+        // Create URL with query parameters for trending posts
+        let url = `${API_URL}/api/posts/trending`;
+        const queryParams = [];
+        
+        // Add date filter using days parameter for 10 days
+        queryParams.push('days=10');
+        
+        // Add limit
+        queryParams.push('limit=5');
+        
+        if (queryParams.length > 0) {
+          url += `?${queryParams.join('&')}`;
+        }
+        
+        const response = await fetch(url, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch trending posts: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Trending posts data:', data);
+        
+        if (data && Array.isArray(data.posts)) {
+          setTrendingPosts(data.posts);
+        } else {
+          console.error('Invalid trending posts data structure:', data);
+          setTrendingPosts([]);
+        }
+      } catch (error) {
+        console.error('Error fetching trending posts:', error);
+        setTrendingPosts([]);
+      } finally {
+        setLoadingTrending(false);
+      }
+    };
+    
+    fetchTrendingPosts();
+  }, []);
 
   // Fetch posts from the API
   useEffect(() => {
@@ -146,14 +238,14 @@ const Dashboard = () => {
         const token = localStorage.getItem('authToken');
         
         // Create URL with query parameters for filters
-        let url = 'http://localhost:3000/api/posts';
+        let url = `${API_URL}/api/posts`;
         const queryParams = [];
         
-        if (filters.country) queryParams.push(`country=${encodeURIComponent(filters.country)}`);
+        // Only filter by city (Bosnia)
         if (filters.city) queryParams.push(`city=${encodeURIComponent(filters.city)}`);
         if (filters.tags.length > 0) {
           filters.tags.forEach(tag => {
-            queryParams.push(`tag=${encodeURIComponent(tag)}`);
+            queryParams.push(`tags=${encodeURIComponent(tag)}`);
           });
         }
         
@@ -182,16 +274,26 @@ const Dashboard = () => {
         // Process the received data
         // The API returns { posts: [...], totalPages, currentPage, totalPosts }
         const formattedPosts = data.posts.map(post => {
+          // Handle posts where authorId might be null
+          const author = post.authorId ? {
+            _id: post.authorId._id,
+            personalInfo: {
+              firstName: post.authorId.firstName || 'Anonymous',
+              lastName: post.authorId.lastName || 'User'
+            },
+            email: post.authorId.email
+          } : {
+            _id: null,
+            personalInfo: {
+              firstName: 'Anonymous',
+              lastName: 'User'
+            },
+            email: null
+          };
+          
           return {
             ...post,
-            author: {
-              _id: post.authorId._id,
-              personalInfo: {
-                firstName: post.authorId.firstName || 'Anonymous',
-                lastName: post.authorId.lastName || 'User'
-              },
-              email: post.authorId.email
-            },
+            author,
             // Explicitly preserve the userVote field
             userVote: post.userVote || 0
           };
@@ -209,7 +311,7 @@ const Dashboard = () => {
     };
     
     fetchPosts();
-  }, [filters.country, filters.city, filters.tags]); // Re-fetch when filters change
+  }, [filters.city, filters.tags]); // Re-fetch when filters change
 
   // Function to format date
   const formatDate = (date) => {
@@ -323,24 +425,6 @@ const Dashboard = () => {
     }
   };
 
-  // Function to handle country change in filters
-  const handleCountryChange = (e) => {
-    const country = e.target.value;
-    setFilters({
-      ...filters,
-      country,
-      city: '' // Reset city when country changes
-    });
-    
-    // Update available cities
-    if (country) {
-      const selectedCountry = mockLocations.find(loc => loc.country === country);
-      setAvailableCities(selectedCountry ? selectedCountry.cities : []);
-    } else {
-      setAvailableCities([]);
-    }
-  };
-
   // Function to handle city change in filters
   const handleCityChange = (e) => {
     setFilters({
@@ -348,6 +432,11 @@ const Dashboard = () => {
       city: e.target.value
     });
   };
+
+  // Set available cities to Bosnian cities
+  useEffect(() => {
+    setAvailableCities(bosnianCities);
+  }, []);
 
   // Function to handle tag selection
   const handleTagToggle = (tag) => {
@@ -371,11 +460,6 @@ const Dashboard = () => {
 
   // Filter posts based on selected filters
   const filteredPosts = posts.filter(post => {
-    // Filter by country
-    if (filters.country && post.location.country !== filters.country) {
-      return false;
-    }
-    
     // Filter by city
     if (filters.city && post.location.city !== filters.city) {
       return false;
@@ -411,7 +495,7 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Navbar user={user} />
+        <Navbar user={authUser} />
         <main className="max-w-screen-xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -424,7 +508,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar user={user} />
+      <Navbar user={authUser} />
       
       <main className="max-w-screen-xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center mb-6">
@@ -440,9 +524,12 @@ const Dashboard = () => {
           </Link>
         </div>
         
-        <div className="mb-8">
+        <div className="mb-4">
           <p className="mt-2 text-gray-600">Latest political opinions from your region</p>
         </div>
+        
+        {/* Top Banner Ad */}
+        <MockAd type="banner" label="Banner Advertisement" />
         
         <div className="flex flex-col md:flex-row gap-6">
           {/* Left Sidebar - Filters */}
@@ -452,35 +539,20 @@ const Dashboard = () => {
               
               {/* Location filters */}
               <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Location</h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Bosnia Cities</h3>
                 <div className="space-y-2">
                   <select
-                    value={filters.country}
-                    onChange={handleCountryChange}
+                    value={filters.city}
+                    onChange={handleCityChange}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="">All Countries</option>
-                    {mockLocations.map(location => (
-                      <option key={location.country} value={location.country}>
-                        {location.country}
+                    <option value="">All Cities</option>
+                    {availableCities.map(city => (
+                      <option key={city} value={city}>
+                        {city}
                       </option>
                     ))}
                   </select>
-                  
-                  {availableCities.length > 0 && (
-                    <select
-                      value={filters.city}
-                      onChange={handleCityChange}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">All Cities</option>
-                      {availableCities.map(city => (
-                        <option key={city} value={city}>
-                          {city}
-                        </option>
-                      ))}
-                    </select>
-                  )}
                 </div>
               </div>
               
@@ -528,7 +600,7 @@ const Dashboard = () => {
               {/* Reset filters button */}
               <button
                 onClick={() => {
-                  setFilters({ country: '', city: '', tags: [] });
+                  setFilters({ city: '', tags: [] });
                   setSearchTerm('');
                   setAvailableCities([]);
                 }}
@@ -536,6 +608,11 @@ const Dashboard = () => {
               >
                 Reset Filters
               </button>
+              
+              {/* Left Sidebar Ad */}
+              <div className="mt-6">
+                <MockAd type="sidebar" label="Sidebar Ad" />
+              </div>
             </div>
           </div>
           
@@ -559,20 +636,31 @@ const Dashboard = () => {
                   <p className="mt-1 text-sm text-gray-500">Please try again later.</p>
                 </div>
               ) : filteredPosts.length > 0 ? (
-                filteredPosts.map(post => (
-                  <div key={post._id} className="bg-white shadow rounded-lg overflow-hidden">
-                    <div className="p-6">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                            <Link to={`/post/${post._id}`} className="hover:text-blue-600">
-                              {post.title}
-                            </Link>
-                          </h2>
+                filteredPosts.map((post, index) => (
+                  <React.Fragment key={post._id}>
+                    {/* Insert ad after every 3 posts */}
+                    {index > 0 && index % 3 === 0 && (
+                      <MockAd type="rectangle" label={`In-feed Ad #${Math.ceil(index/3)}`} />
+                    )}
+                    <div className="bg-white shadow rounded-lg overflow-hidden">
+                      <div className="p-6">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                              <Link to={`/post/${post._id}`} className="hover:text-blue-600">
+                                {post.title}
+                              </Link>
+                            </h2>
                           <div className="flex items-center text-sm text-gray-500 mb-4">
-                            <span>
-                              By {post.author.personalInfo.firstName} {post.author.personalInfo.lastName}
-                            </span>
+                            <UserHoverCard 
+                              userId={post.author._id} 
+                              userName={`${post.author.personalInfo.firstName} ${post.author.personalInfo.lastName}`}
+                              userEmail={post.author.email}
+                            >
+                              <Link to={`/profile/${post.author._id}`} className="text-blue-600 hover:underline">
+                                {post.author.personalInfo.firstName} {post.author.personalInfo.lastName}
+                              </Link>
+                            </UserHoverCard>
                             <span className="mx-2">•</span>
                             <span>{formatDate(post.createdAt)}</span>
                             <span className="mx-2">•</span>
@@ -636,6 +724,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                   </div>
+                  </React.Fragment>
                 ))
               ) : (
                 <div className="bg-white shadow rounded-lg p-8 text-center">
@@ -660,37 +749,60 @@ const Dashboard = () => {
               </div>
               
               <div className="space-y-4">
-                {trendingPosts.map(post => (
-                  <div key={post._id} className="border-b border-gray-200 pb-4 last:border-0 last:pb-0">
-                    <h3 className="text-sm font-medium text-gray-900 hover:text-blue-600">
-                      <Link to={`/post/${post._id}`} className="hover:text-blue-600">
-                        {post.title}
-                      </Link>
-                    </h3>
-                    <div className="mt-1 flex items-center justify-between">
-                      <span className="text-xs text-gray-500">
-                        {post.location.city}, {post.location.country}
-                      </span>
-                      <div className="flex items-center space-x-2">
-                        <span className="flex items-center text-xs text-green-600">
-                          <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                          {post.votes.upvotes}
-                        </span>
-                        <span className="flex items-center text-xs text-red-600">
-                          <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                          {post.votes.downvotes}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      by {post.author.personalInfo.firstName} {post.author.personalInfo.lastName}
-                    </p>
+                {loadingTrending ? (
+                  <div className="flex justify-center items-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                    <span className="ml-2 text-sm text-gray-600">Loading trending posts...</span>
                   </div>
-                ))}
+                ) : trendingPosts.length > 0 ? (
+                  trendingPosts.map(post => (
+                    <div key={post._id} className="border-b border-gray-200 pb-4 last:border-0 last:pb-0">
+                      <h3 className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                        <Link to={`/post/${post._id}`} className="hover:text-blue-600">
+                          {post.title}
+                        </Link>
+                      </h3>
+                      <div className="mt-1 flex items-center justify-between">
+                        <span className="text-xs text-gray-500">
+                          {post.location.city}, {post.location.country || 'Bosnia'}
+                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="flex items-center text-xs text-green-600">
+                            <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                            {post.votes?.upvotes || 0}
+                          </span>
+                          <span className="flex items-center text-xs text-red-600">
+                            <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                            {post.votes?.downvotes || 0}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        by{' '}<UserHoverCard 
+                          userId={post.author._id} 
+                          userName={`${post.author.personalInfo.firstName} ${post.author.personalInfo.lastName}`}
+                          userEmail={post.author.email}
+                        >
+                          <Link to={`/profile/${post.author._id}`} className="text-blue-600 hover:underline">
+                            {post.author.personalInfo.firstName} {post.author.personalInfo.lastName}
+                          </Link>
+                        </UserHoverCard>
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6">
+                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No trending posts</h3>
+                    <p className="mt-1 text-sm text-gray-500">There are no trending posts from the last 2 days.</p>
+                  </div>
+                )}
               </div>
               
               <Link 
@@ -699,6 +811,11 @@ const Dashboard = () => {
               >
                 View All Trending Posts
               </Link>
+              
+              {/* Right Sidebar Ad */}
+              <div className="mt-6">
+                <MockAd type="square" label="Sponsored Content" />
+              </div>
             </div>
           </div>
         </div>

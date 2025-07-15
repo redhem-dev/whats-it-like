@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { API_URL } from '../services/api';
 
 /**
  * Component that handles OAuth callbacks
@@ -37,7 +38,7 @@ const AuthCallback = () => {
       // Fetch user info (optional but recommended to verify token works)
       const getUserInfo = async () => {
         try {
-          const response = await fetch('http://localhost:3000/api/auth/me', {
+          const response = await fetch(`${API_URL}/api/auth/me`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }
@@ -45,16 +46,19 @@ const AuthCallback = () => {
           
           if (response.ok) {
             const userData = await response.json();
-            // Store user data if needed
-            localStorage.setItem('user', JSON.stringify(userData));
+            console.log('Successfully fetched user data after Google login:', userData);
+            // Store user data with the correct key name that App.jsx expects
+            localStorage.setItem('userData', JSON.stringify(userData));
           }
           
           // Redirect to dashboard or specified redirect path
-          navigate(redirectPath);
+          console.log('Redirecting to:', redirectPath);
+          navigate(redirectPath, { replace: true });
         } catch (err) {
           console.error('Error fetching user data:', err);
           // Still redirect to specified path since we have the token
-          navigate(redirectPath);
+          console.log('Error fetching user data but proceeding with redirect to:', redirectPath);
+          navigate(redirectPath, { replace: true });
         }
       };
       

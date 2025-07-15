@@ -24,19 +24,19 @@ const userSchema = new Schema({
     type: String
   },
   
-  // Email verification - commented out for MVP
-  /*
+  // Email verification
   emailVerified: {
     type: Boolean,
     default: false
   },
-  emailVerificationToken: {
-    type: String
-  },
-  */
   
-  // ID document verification
-  idNumber: {
+  // ID document verification - store only a secure hash, not the raw ID number
+  idHash: {
+    type: String,
+    trim: true
+  },
+  // Store country of ID for reference
+  idCountry: {
     type: String,
     trim: true
   },
@@ -134,7 +134,60 @@ const userSchema = new Schema({
     vote: {
       type: Number,
       enum: [-1, 1]
+    },
+    correctVote: {
+      type: Boolean,
+      default: null // Will be updated when post truth rating is established
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
     }
+  }],
+  
+  // Reputation system
+  reputation: {
+    score: {
+      type: Number,
+      default: 50 // Starting at 50 (middle of 1-100 scale)
+    },
+    correctVotes: {
+      type: Number,
+      default: 0
+    },
+    totalVotes: {
+      type: Number,
+      default: 0
+    },
+    lastCalculated: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  
+  // Additional profile information
+  bio: {
+    type: String,
+    trim: true,
+    maxlength: 500
+  },
+  location: {
+    country: {
+      type: String,
+      trim: true
+    },
+    city: {
+      type: String,
+      trim: true
+    }
+  },
+  profession: {
+    type: String,
+    trim: true
+  },
+  interests: [{
+    type: String,
+    trim: true
   }],
   
   // Timestamps and status

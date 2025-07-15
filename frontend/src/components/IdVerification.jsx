@@ -1,21 +1,41 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_URL } from '../services/api';
 
-// API base URL - using the same URL as in useAuth hook
-const API_URL = 'http://localhost:3000';
+// Supported countries for ID verification
+const SUPPORTED_COUNTRIES = [
+  { code: 'BA', name: 'Bosnia and Herzegovina' },
+  { code: 'RS', name: 'Serbia' },
+  { code: 'HR', name: 'Croatia' }
+];
+
+// ID number format patterns by country
+const ID_PATTERNS = {
+  BA: /^[A-Za-z0-9]{9}$/, // Bosnia - 9 alphanumeric characters
+  RS: /^\d{9}$/, // Serbia - 9 digits
+  HR: /^\d{9}$/ // Croatia - 9 digits
+};
+
+// Regex validation messages by country
+const VALIDATION_MESSAGES = {
+  BA: 'ID number must be 9 characters (letters and/or digits) for Bosnian ID cards',
+  RS: 'ID number must be 9 digits for Serbian ID cards',
+  HR: 'ID number must be 9 digits for Croatian ID cards'
+};
 
 /**
  * ID Verification component for uploading and verifying ID cards
  * To be integrated into the registration flow
  */
-const IdVerification = ({ onVerificationComplete, formData }) => {
+const IdVerification = ({ onVerificationComplete, formData, onFormDataChange = null }) => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [extractedData, setExtractedData] = useState(null);
   const [verificationResult, setVerificationResult] = useState(null);
+  const [country, setCountry] = useState(formData?.country || 'BA'); // Default to Bosnia
   const fileInputRef = useRef(null);
   
   const navigate = useNavigate();
@@ -51,6 +71,14 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
     }
   };
   
+  // Handle country selection change
+  const handleCountryChange = (e) => {
+    setCountry(e.target.value);
+    if (onFormDataChange) {
+      onFormDataChange({ ...formData, country: e.target.value });
+    }
+  };
+
   // Upload and process ID card image
   const handleUpload = async () => {
     if (!file) {
@@ -64,6 +92,7 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
     try {
       const formData = new FormData();
       formData.append('idCard', file);
+      formData.append('country', country); // Send country code to backend
       
       const response = await axios.post(`${API_URL}/api/verify/upload-id`, formData, {
         headers: {
@@ -72,8 +101,20 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
         withCredentials: true, // Important for session cookies
       });
       
-      setExtractedData(response.data.extractedData);
+      const extractedDataResponse = response.data.extractedData;
+      setExtractedData(extractedDataResponse);
       setVerificationResult(null);
+      
+      // Update country state based on the detected country from server
+      if (extractedDataResponse.country && extractedDataResponse.country !== 'Not detected') {
+        console.log('Updating country from server detection:', extractedDataResponse.country);
+        setCountry(extractedDataResponse.country);
+        
+        // Update parent form data if callback exists
+        if (onFormDataChange) {
+          onFormDataChange({ ...formData, country: extractedDataResponse.country });
+        }
+      }
     } catch (err) {
       console.error('Error uploading ID card:', err);
       
@@ -102,8 +143,30 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
       return;
     }
     
-    if (!formData?.firstName || !formData?.lastName || !formData?.idNumber) {
-      setError('Please fill in your name and ID number in the registration form');
+    // If idNumber is missing in the formData but exists in extractedData, use it
+    if (extractedData.idNumber && (!formData?.idNumber || formData.idNumber.trim() === '')) {
+      if (onFormDataChange) {
+        // Notify parent about the ID number from the extracted data
+        onFormDataChange({ ...formData, idNumber: extractedData.idNumber, country });
+      }
+    }
+    
+    // Check if all required fields are available
+    if ((!formData?.firstName || !formData?.lastName) && !extractedData.fullName) {
+      setError('Please ensure your name is visible on the ID card');
+      return;
+    }
+    
+    // Make sure we have an ID number either from form or extracted from ID
+    const idNumber = formData?.idNumber || extractedData.idNumber;
+    if (!idNumber || idNumber.trim() === '') {
+      setError('ID number is required. Please ensure it is visible on your ID card');
+      return;
+    }
+    
+    // Validate the ID number format against the selected country's pattern
+    if (ID_PATTERNS[country] && !ID_PATTERNS[country].test(idNumber.replace(/\s+/g, ''))) {
+      setError(VALIDATION_MESSAGES[country]);
       return;
     }
     
@@ -114,19 +177,27 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
       const response = await axios.post(`${API_URL}/api/verify/match-data`, {
         firstName: formData.firstName,
         lastName: formData.lastName,
-        idNumber: formData.idNumber
+        idNumber: formData.idNumber,
+        country: country
       }, {
         withCredentials: true, // Important for session cookies
       });
       
+      // Check the actual verification status from the response
+      const verificationData = response.data;
+      console.log('Server verification response:', verificationData);
+      
+      // Only consider verified if both the idMatch and verified flags are true
+      const isVerified = verificationData.verified === true && verificationData.idMatch === true;
+      
       setVerificationResult({
-        success: true,
-        message: 'Identity verified successfully'
+        success: isVerified,
+        message: isVerified ? 'Identity verified successfully' : 'Verification failed'
       });
       
-      // Notify parent component that verification is complete
+      // Notify parent component with the actual verification status
       if (onVerificationComplete) {
-        onVerificationComplete(true);
+        onVerificationComplete(isVerified, isVerified ? 'Verification successful' : verificationData.message || 'Verification failed');
       }
     } catch (err) {
       console.error('Verification failed:', err);
@@ -137,8 +208,15 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
         details: err.response?.data?.details || {}
       });
       
+      // Get specific error message
+      const errorMessage = err.response?.data?.message || 'Verification failed. Please check your information and try again.';
+      
+      // Set error for display in this component
+      setError(errorMessage);
+      
       if (onVerificationComplete) {
-        onVerificationComplete(false);
+        // Pass the error message to parent component
+        onVerificationComplete(false, errorMessage);
       }
     } finally {
       setLoading(false);
@@ -224,6 +302,16 @@ const IdVerification = ({ onVerificationComplete, formData }) => {
             </div>
             <div className="mb-2">
               <span className="font-medium">ID Number:</span> {extractedData.idNumber}
+            </div>
+            {extractedData.dateOfBirth && (
+              <div className="mb-2">
+                <span className="font-medium">Date of Birth:</span> {extractedData.dateOfBirth}
+              </div>
+            )}
+            <div className="mb-2">
+              <span className="font-medium">Country:</span> {
+                SUPPORTED_COUNTRIES.find(c => c.code === country)?.name || country
+              }
             </div>
             
             {!verificationResult && (

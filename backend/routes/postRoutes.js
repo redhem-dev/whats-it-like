@@ -6,6 +6,7 @@ const optionalAuth = require('../middleware/optionalAuth'); // Optional authenti
 
 // Post routes with authentication
 router.post('/', auth, postController.createPost);
+router.get('/trending', optionalAuth, postController.getTrendingPosts); // Trending posts endpoint
 router.get('/', optionalAuth, postController.getAllPosts); // Use optional auth
 router.get('/search', optionalAuth, postController.searchPosts); // New search endpoint
 router.get('/:id', optionalAuth, postController.getPostById); // Use optional auth

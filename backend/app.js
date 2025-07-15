@@ -13,6 +13,9 @@ const postRoutes = require('./routes/postRoutes');
 const replyRoutes = require('./routes/replyRoutes');
 const individualReplyRoutes = require('./routes/individualReplyRoutes');
 const verificationRoutes = require('./routes/verificationRoutes');
+const emailVerificationRoutes = require('./routes/emailVerificationRoutes');
+const locationRoutes = require('./routes/locationRoutes');
+const testRoutes = require('./routes/testRoutes');
 
 // Connect to MongoDB
 connectDB();
@@ -56,6 +59,9 @@ app.use('/api/posts', postRoutes);
 app.use('/api/posts', replyRoutes);
 app.use('/api/replies', individualReplyRoutes);
 app.use('/api/verify', verificationRoutes);
+app.use('/api/verify/email', emailVerificationRoutes);
+app.use('/api/location', locationRoutes);
+app.use('/api/test', testRoutes);
 
 // Legacy Google auth routes (can be migrated to authRoutes later)
 app.get('/', (req, res) => {
@@ -67,10 +73,56 @@ app.get('/auth/google',
 );
 
 app.get('/google/callback', 
-  passport.authenticate('google', {
-    successRedirect: '/protected',
-    failureRedirect: '/'
-  })
+  passport.authenticate('google', { failureRedirect: '/' }),
+  (req, res) => {
+    // User authenticated via Google OAuth
+    
+    // If this is a temp user that needs ID verification (new Google user)
+    if (req.user && req.user.requiresIdVerification) {
+
+      
+      // Store the Google profile data in the session for later use
+      req.session.tempGoogleUser = {
+        googleId: req.user.googleId,
+        email: req.user.email,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        initials: req.user.initials || (req.user.firstName && req.user.lastName) ? 
+          `${req.user.firstName[0]}${req.user.lastName[0]}`.toUpperCase() : 
+          (req.user.email ? `${req.user.email[0]}${req.user.email[1] || ''}`.toUpperCase() : '??')
+      };
+      
+      // Generate a temporary token for this verification session
+      const tempToken = require('crypto').randomBytes(64).toString('hex');
+      req.session.tempToken = tempToken;
+      
+
+
+      
+      // Save the session before redirecting
+      req.session.save(err => {
+        if (err) {
+          console.error('Error saving session:', err);
+          return res.redirect('http://localhost:5173/signup?error=session_error');
+        }
+        
+        // Redirect to ID verification page on the frontend
+        return res.redirect(`http://localhost:5173/verify-id?token=${tempToken}&google=true`);
+      });
+    } else {
+      // If user already exists in DB, generate JWT token
+      const jwt = require('jsonwebtoken');
+      const token = jwt.sign(
+        { userId: req.user._id || req.user.id },
+        process.env.JWT_SECRET || 'whats-it-like-default-jwt-secret-key',
+        { expiresIn: '7d' }
+      );
+      
+      // Redirect to frontend with token
+
+      return res.redirect(`http://localhost:5173/auth-callback?token=${token}&redirect=/dashboard`);
+    }
+  }
 );
 
 app.get('/protected', isLoggedIn, (req, res) => {
