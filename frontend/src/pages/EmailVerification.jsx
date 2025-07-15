@@ -108,6 +108,21 @@ const EmailVerification = () => {
       if (data.token) {
         // Store token in localStorage
         localStorage.setItem('authToken', data.token);
+        
+        // Update user data in localStorage to mark email as verified
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+          try {
+            const parsedUserData = JSON.parse(userData);
+            parsedUserData.emailVerified = true; // Set email as verified
+            localStorage.setItem('userData', JSON.stringify(parsedUserData));
+            console.log('Updated user data in localStorage - email is now verified');
+          } catch (e) {
+            console.error('Error updating user data:', e);
+          }
+        }
+        
+        // Clean up pending verification data
         localStorage.removeItem('pendingUserId');
         localStorage.removeItem('pendingEmail');
         

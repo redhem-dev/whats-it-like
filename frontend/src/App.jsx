@@ -39,13 +39,18 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/signin" state={{ from: location }} replace />;
   }
   
-  // Check if this user needs email verification (new registration)
-  // We'll only redirect if:
-  // 1. The user data exists (they're logged in)
-  // 2. Email is specifically marked as NOT verified (emailVerified === false)
+  // Check for pending verification indicators
+  const hasPendingVerification = localStorage.getItem('pendingUserId') && localStorage.getItem('pendingEmail');
+  const hasCompletedSignup = localStorage.getItem('completedSignup');
+  
+  // Only redirect to verification in these cases:
+  // 1. User has just signed up (completedSignup flag is present)
+  // 2. There's a pending verification in progress (pendingUserId and pendingEmail exist)
   // 3. We're not already on the verification page
-  if (userData && emailVerified === false && !location.pathname.includes('/verify-email')) {
-    console.log('Email verification needed, redirecting to verification page');
+  if (hasCompletedSignup && !location.pathname.includes('/verify-email')) {
+    console.log('New signup detected, redirecting to verification page');
+    // Clear the completed signup flag once we've redirected
+    localStorage.removeItem('completedSignup');
     return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
@@ -95,7 +100,9 @@ function App() {
             },
             status: userData.user.status || 'active',
             reputation: userData.user.reputation || 0,
-            emailVerified: userData.user.emailVerified || false
+            // IMPORTANT: Get the actual email verification status from the server
+            // Use explicit true/false to avoid undefined which could cause redirect issues
+            emailVerified: userData.user.emailVerified === true
           };
           
           // Store in localStorage for persistence

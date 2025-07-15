@@ -78,6 +78,9 @@ const SignUp = () => {
           throw new Error(result.error || 'Failed to sign up');
         }
         
+        // Set a flag in localStorage to indicate a new signup that needs verification
+        localStorage.setItem('completedSignup', 'true');
+        
         // Successful signup, redirect to email verification
         navigate("/verify-email");
       } catch (err) {
