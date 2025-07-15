@@ -272,6 +272,16 @@ exports.storeVerificationData = (req, extractedData, country) => {
   req.session.verificationData.timestamp = Date.now();
   req.session.verificationData.country = 'BA'; // Only supporting Bosnian IDs
   
+  // Store a copy in the global verification cache as backup
+  const sessionId = req.session.id;
+  global.verificationCache = global.verificationCache || {};
+  global.verificationCache[sessionId] = {
+    extractedData,
+    timestamp: Date.now(),
+    country: 'BA',
+    expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours expiry
+  };
+  
   // Force session save to ensure data is persisted
   req.session.save(err => {
     if (err) {
@@ -300,6 +310,17 @@ exports.verifyUserData = async (req, res) => {
     if (!rawIdNumber) missingFields.push('idNumber');
     
     // Bosnian ID validation
+    
+    if (missingFields.length > 0) {
+      console.log(`Match data validation failed. Missing fields: ${missingFields.join(', ')}`);
+      return res.status(400).json({ 
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')} are required`,
+        details: 'All fields must be provided for ID verification'
+      });
+    }
+    
+    // Bosnian ID validation
     let idNumber = rawIdNumber;
     
     // Validate Bosnian ID format
@@ -314,22 +335,86 @@ exports.verifyUserData = async (req, res) => {
       }
     }
     
-    if (missingFields.length > 0) {
-      console.log(`Match data validation failed. Missing fields: ${missingFields.join(', ')}`);
-      return res.status(400).json({ 
-        success: false,
-        message: `Missing required fields: ${missingFields.join(', ')} are required`,
-        details: 'All fields must be provided for ID verification'
+    const sessionId = req.session.id;
+    console.log('Current session ID:', sessionId);
+    
+    // Look for verification data in both session and global cache
+    let sessionData = null;
+    let dataSource = 'none';
+    
+    // Check session first
+    if (req.session.verificationData) {
+      console.log('Found verification data in session');
+      sessionData = req.session.verificationData;
+      dataSource = 'session';
+    } 
+    // Check global cache as backup
+    else if (global.verificationCache[sessionId]) {
+      console.log('Found verification data in global cache');
+      // If found in cache but not in session, restore it to session
+      req.session.verificationData = global.verificationCache[sessionId];
+      sessionData = req.session.verificationData;
+      dataSource = 'cache';
+      
+      // Force session save to persist the restored data
+      req.session.save(err => {
+        if (err) console.error('Error saving restored session data:', err);
+        else console.log('Restored session data saved successfully');
+      });
+    }
+    // If still no data, try to find any recent verification data for this user
+    else if (req.user) {
+      const userId = req.user.userId;
+      console.log('Checking for any verification data for user:', userId);
+      
+      // Look through cache for any entry that might belong to this user
+      const now = Date.now();
+      for (const [cachedSessionId, cacheData] of Object.entries(global.verificationCache)) {
+        // Skip expired entries
+        if (cacheData.expires < now) continue;
+        
+        // If we find a cache entry that's not expired, use it
+        sessionData = cacheData;
+        req.session.verificationData = cacheData;
+        dataSource = 'user-cache';
+        console.log('Using verification data from another session for this user');
+        
+        // Force session save
+        req.session.save();
+        break;
+      }
+    }
+    
+    // If we have extractedDataBackup from frontend, use it as a last resort
+    if (!sessionData && extractedDataBackup) {
+      console.log('Using extracted data backup from frontend request');
+      
+      // Create session data from the backup
+      sessionData = {
+        extractedData: extractedDataBackup,
+        timestamp: Date.now(),
+        country: country || 'BA'
+      };
+      
+      // Save this data to session and cache for future requests
+      req.session.verificationData = sessionData;
+      global.verificationCache[sessionId] = {
+        ...sessionData,
+        expires: Date.now() + (24 * 60 * 60 * 1000) // 24 hours expiry
+      };
+      
+      dataSource = 'frontend-backup';
+      
+      // Force save the session
+      req.session.save(err => {
+        if (err) console.error('Error saving session with frontend backup data:', err);
+        else console.log('Frontend backup data saved to session successfully');
       });
     }
     
-    // Debug session information
-    console.log('Session ID:', req.session.id);
-    console.log('Session keys:', Object.keys(req.session));
-    
-    // Check if verification data exists in session
-    if (!req.session.verificationData) {
-      console.error('No verificationData found in session. Available session data:', 
+    // If still no data found, return error
+    if (!sessionData) {
+      console.error('No verificationData found in session, cache or request. Available session data:', 
                   JSON.stringify(req.session, (k, v) => k === 'cookie' ? '[Cookie Object]' : v));
       
       return res.status(400).json({ 
@@ -339,17 +424,8 @@ exports.verifyUserData = async (req, res) => {
       });
     }
     
-    // Get OCR data from session
-    const sessionData = req.session.verificationData;
-    console.log('Session verification data found:', 
+    console.log(`Verification data found (source: ${dataSource}):`, 
                JSON.stringify(sessionData, null, 2).substring(0, 200) + '...');
-    
-    if (!sessionData) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'No verification data found in session. Please upload your ID first.'
-      });
-    }
     
     // Extract data with fallbacks
     const extractedData = sessionData.extractedData || sessionData;

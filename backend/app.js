@@ -63,6 +63,7 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:5173',
       'https://whats-it-like.vercel.app',
+      'https://whats-it-like-git-main-edhemroguljic.vercel.app',
       'https://whats-it-like-ctzwv0gdp-contreebutes-projects.vercel.app'
     ];
     
@@ -71,7 +72,13 @@ app.use(cors({
       allowedOrigins.push(process.env.FRONTEND_URL);
     }
     
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+    // In development, allow all origins
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // In production, check against allowed origins
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -80,22 +87,57 @@ app.use(cors({
   },
   credentials: true, // Allow cookies to be sent
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
+// Add a simple logging middleware to track requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path} - Origin: ${req.get('origin')} - Has Cookies: ${!!req.headers.cookie}`);
+  next();
+});
+
 // Configure sessions for ID verification
+const MongoStore = require('connect-mongo');
+
 app.use(session({ 
   secret: process.env.SESSION_SECRET || 'temporarydevsecretshouldbereplaced', 
-  resave: true, // Changed to true to ensure session is saved back to store
-  saveUninitialized: true, // Changed to true to save new sessions
-  name: 'whatsitlike.sid', // Custom name for the cookie
+  resave: true, 
+  saveUninitialized: true, 
+  name: 'whatsitlike.sid', 
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI,
+    ttl: 24 * 60 * 60, // Session TTL (24 hours)
+    autoRemove: 'native',
+    crypto: {
+      secret: process.env.SESSION_SECRET || 'temporarydevsecretshouldbereplaced'
+    }
+  }),
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-    sameSite: 'lax', // Allow cookies in same-site requests
-    maxAge: 60 * 60 * 1000 // Extended to 60 minutes for ID verification process
+    // Use secure cookies in production, but only if not in development
+    secure: process.env.NODE_ENV === 'production',
+    // Critical for cross-domain cookies: 'none' allows cross-site cookies when secure is true
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    // Allow the API domain to set cookies that will be sent to the frontend domain
+    domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
   }
 }));
+
+// Add session debugging middleware
+app.use((req, res, next) => {
+  console.log(`Session ID: ${req.session?.id || 'none'}, Has verification data: ${!!req.session?.verificationData}`);
+  next();
+});
+
+// Add session debugging middleware in development
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log('Session ID:', req.session.id);
+    console.log('Session has verification data:', !!req.session.verificationData);
+    next();
+  });
+}
 app.use(passport.initialize());
 app.use(passport.session());
 

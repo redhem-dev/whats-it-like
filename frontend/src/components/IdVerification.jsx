@@ -174,11 +174,14 @@ const IdVerification = ({ onVerificationComplete, formData, onFormDataChange = n
     setError('');
     
     try {
+      // Include both withCredentials for cookies and extracted data as a backup
       const response = await axios.post(`${API_URL}/api/verify/match-data`, {
         firstName: formData.firstName,
         lastName: formData.lastName,
         idNumber: formData.idNumber,
-        country: country
+        country: country,
+        // Include the extracted data as a backup in case session is lost
+        extractedDataBackup: extractedData
       }, {
         withCredentials: true, // Important for session cookies
       });
