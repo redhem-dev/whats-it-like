@@ -29,9 +29,24 @@ exports.signup = async (req, res) => {
     
     // STRICT ID verification check - always required except in test env
     if (process.env.NODE_ENV !== 'test') {
+      // Detailed session debugging to diagnose verification issues
+      console.log('====== SIGNUP SESSION DEBUG ======');
+      console.log('Session ID:', req.session?.id || 'undefined');
+      console.log('Session exists:', !!req.session);
+      console.log('isVerified flag:', !!req.session?.isVerified);
+      console.log('verificationStatus:', JSON.stringify(req.session?.verificationStatus || {}));
+      console.log('verifiedIdInfo:', JSON.stringify(req.session?.verifiedIdInfo || {}));
+      console.log('ID provided in request:', idNumber);
+      console.log('================================');
+      
       if (!req.session || !req.session.isVerified) {
         return res.status(403).json({ 
-          message: 'ID verification required before registration. Please verify your identity first.'
+          message: 'ID verification required before registration. Please verify your identity first.',
+          debug: {
+            hasSession: !!req.session,
+            isVerified: !!req.session?.isVerified,
+            sessionId: req.session?.id || 'none'
+          }
         });
       }
       
@@ -43,7 +58,12 @@ exports.signup = async (req, res) => {
           verified: verifiedIdInfo?.idNumber || 'None'
         });
         return res.status(403).json({
-          message: 'The ID number provided does not match your verified ID. Please verify your ID again.'
+          message: 'The ID number provided does not match your verified ID. Please verify your ID again.',
+          debug: {
+            hasVerifiedInfo: !!verifiedIdInfo,
+            providedId: idNumber,
+            verifiedId: verifiedIdInfo?.idNumber || 'None'
+          }
         });
       }
     }

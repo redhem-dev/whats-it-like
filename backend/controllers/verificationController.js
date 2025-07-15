@@ -810,33 +810,28 @@ exports.verifyUserData = async (req, res) => {
       const inputFullName = `${firstName} ${lastName}`.toLowerCase();
       const ocrFullName = extractedData.fullName.toLowerCase();
       nameMatchResult = ocrFullName.includes(inputFullName) || inputFullName.includes(ocrFullName);
+    
     }
     
-    // Final verification result
+    // Set the final verification result
     const isVerified = idMatchResult && nameMatchResult;
     
-    // Store verification status in session for future reference
+    // Store verification result and data in session for signup flow
     req.session.isVerified = isVerified;
-    req.session.verificationStatus = {
-      verified: isVerified,
-      timestamp: Date.now(),
-      idMatch: idMatchResult,
-      nameMatch: nameMatchResult,
-      dataSource: dataSource
-    };
-    
-    // CRITICAL: Store verified ID info for signup process
-    req.session.verifiedIdInfo = {
-      idNumber: normalizedInputId, // Use normalized version for consistency
-      firstName: firstName,
-      lastName: lastName,
-      country: extractedData.country || country || 'BA',
-      verifiedAt: Date.now()
-    };
+    req.session.verificationStatus = { verified: isVerified, timestamp: Date.now(), idMatch: idMatchResult, nameMatch: nameMatchResult, dataSource };
+    req.session.verifiedIdInfo = { idNumber: normalizedInputId, firstName, lastName, country, verifiedAt: Date.now() };
     
     // Force session save to ensure verification status persists
     if (typeof req.session.save === 'function') {
-      req.session.save();
+      req.session.save(err => {
+        if (err) {
+          console.error('Error saving session after verification:', err);
+        } else {
+          console.log('Session saved successfully with verification data');
+          console.log('Session ID:', req.session.id);
+          console.log('Verification flags set:', { isVerified, hasIdInfo: !!req.session.verifiedIdInfo });
+        }
+      });
     }
     
     // Return verification result
@@ -847,7 +842,8 @@ exports.verifyUserData = async (req, res) => {
       nameMatch: nameMatchResult,
       message: isVerified ? 
         'User data successfully verified against ID' : 
-        'User data does not match ID information'
+        'User data does not match ID information',
+      sessionId: req.session.id // Add session ID in response for debugging
     });
   } catch (error) {
     console.error('Error in verification process:', error);
