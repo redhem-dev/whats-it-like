@@ -67,46 +67,21 @@ const SignUp = () => {
     setIsVerified(verified);
     
     if (verified) {
-      // If verified, proceed with account creation using direct API call
-      // to handle email verification redirection
+      // If verified, proceed with account creation through the useAuth hook
+      // This ensures consistent session handling with cookies
       try {
-        const response = await fetch(`${API_URL}/api/auth/signup`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            firstName, 
-            lastName, 
-            email, 
-            password, 
-            idNumber, 
-            country: COUNTRY_CODE 
-          }),
-          credentials: 'include'
-        });
+        // Use the signup function from the hook instead of direct API call
+        // This gives better consistency with session handling
+        const result = await signup(firstName, lastName, email, password, idNumber, COUNTRY_CODE);
         
-        const data = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to sign up');
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to sign up');
         }
         
-        // Check if email verification is required
-        if (data.requiresEmailVerification) {
-          // Store user ID and email for the verification page
-          localStorage.setItem('pendingUserId', data.user.id);
-          localStorage.setItem('pendingEmail', data.user.email);
-          
-          // Redirect to email verification page
-          navigate(`/verify-email?userId=${data.user.id}&email=${encodeURIComponent(data.user.email)}`);
-          return;
-        }
-        
-        // Regular signup flow - store token and redirect
-        localStorage.setItem('authToken', data.token);
+        // Successful signup, redirect to dashboard
         navigate("/dashboard");
       } catch (err) {
+        console.error('Signup error:', err);
         setError(err.message || "Failed to sign up");
       }
     } else {
@@ -117,23 +92,8 @@ const SignUp = () => {
     }
   };
   
-  // Handle form submission for registration after verification
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!isVerified) {
-      setError("You must complete ID verification before signing up");
-      return;
-    }
-    
-    try {
-      // Include country in signup process
-      await signup(firstName, lastName, email, password, idNumber, COUNTRY_CODE);
-      navigate("/"); // Redirect to dashboard after successful signup
-    } catch (err) {
-      setError(err.message || "Failed to sign up");
-    }
-  };
+  // Note: handleSubmit is now removed as verification and signup are handled together
+  // in the handleVerificationComplete function for a more consistent flow
 
   // Handle Google sign up
   const handleGoogleSignUp = () => {
@@ -254,7 +214,10 @@ const SignUp = () => {
                 className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                 value={idNumber}
                 onChange={(e) => setIdNumber(e.target.value)}
-                placeholder="Enter your ID number"
+                placeholder="Enter your Bosnian ID number"
+                pattern="[A-Za-z0-9]{7,12}"
+                title="Bosnian ID number: 7-12 alphanumeric characters"
+                required
               />
               <p className="text-xs italic mt-1">
                 Format: Alphanumeric series from your Bosnian ID card (7-12 characters)
@@ -266,7 +229,7 @@ const SignUp = () => {
               disabled={loading}
               className="w-full bg-black text-white font-semibold py-2 rounded hover:bg-zinc-800 transition-colors"
             >
-              {loading ? "Creating Account..." : verificationStep ? "Complete Registration" : "Proceed to Verification"}
+              {loading ? "Processing..." : "Proceed to ID Verification"}
             </button>
 
             {/* Divider */}

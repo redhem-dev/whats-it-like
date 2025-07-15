@@ -172,6 +172,9 @@ const SinglePostPage = () => {
     });
   };
 
+  // State for location verification status message
+  const [locationVerificationStatus, setLocationVerificationStatus] = useState(null);
+  
   // Function to handle voting on post
   const handlePostVote = async (voteType) => {
     if (!currentUserId) {
@@ -182,16 +185,23 @@ const SinglePostPage = () => {
     // Verify user location before allowing vote
     if (!locationVerified) {
       try {
-        // Attempt to verify location
-        setError('Verifying your location...');
+        // Show verification status without blocking post display
+        setLocationVerificationStatus('Verifying your location...');
+        setError(null); // Clear any previous errors
+        
         const locationAllowed = await verifyLocation();
         
         if (!locationAllowed) {
+          setLocationVerificationStatus(null);
           setError('Voting is only allowed for users physically located in Bosnia and Herzegovina.');
           return;
         }
+        
+        // Clear status on success
+        setLocationVerificationStatus(null);
       } catch (error) {
         console.error('Location verification failed:', error);
+        setLocationVerificationStatus(null);
         setError('Location verification failed. Voting is only allowed for users physically located in Bosnia and Herzegovina.');
         return;
       }
@@ -573,6 +583,21 @@ const SinglePostPage = () => {
                 </button>
               )}
             </div>
+            
+            {/* Location Verification Status */}
+            {locationVerificationStatus && (
+              <div className="flex items-center p-2 mb-3 bg-blue-50 text-blue-700 rounded">
+                <div className="mr-2 h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <span>{locationVerificationStatus}</span>
+              </div>
+            )}
+            
+            {/* Error Message */}
+            {error && (
+              <div className="p-2 mb-3 bg-red-50 text-red-700 rounded">
+                {error}
+              </div>
+            )}
             
             {/* Post voting */}
             <div className="flex items-center justify-end space-x-4 pt-4 border-t">
