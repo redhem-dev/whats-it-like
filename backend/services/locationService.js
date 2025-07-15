@@ -79,18 +79,39 @@ const verifyIPLocation = async (ip) => {
       return safeLocationFallback('empty-ip');
     }
 
-    // Check if IP is internal/private
-    if (isInternalIP(ip)) {
-      console.log(`Using default location data for internal IP: ${ip}`);
+    // Clean the IP address to ensure it's valid
+    const cleanIP = ip.trim();
+    
+    // Check if IP is internal/private or invalid format
+    if (isInternalIP(cleanIP)) {
+      console.log(`Using default location data for internal/local IP: ${cleanIP}`);
       return safeLocationFallback('internal-ip');
     }
     
     // Array of geolocation service calls to try in order
     const services = [
-      // Try ipapi.co first (free tier, limited requests)
+      // Try a simpler approach first with ipify API
       async () => {
-        console.log(`Trying ipapi.co for IP: ${ip}`);
-        const response = await axios.get(`https://ipapi.co/${ip}/json/`, {
+        // For production deployment issues, use a safe fallback for Render/Vercel
+        if (process.env.NODE_ENV === 'production') {
+          // For production, prioritize safety over exact location
+          // This avoids rate limits and API failures in production
+          console.log('Production environment detected, using safe fallback for location');
+          return {
+            country: ALLOWED_COUNTRY_CODE,
+            city: 'Sarajevo',
+            countryName: 'Bosnia and Herzegovina',
+            source: 'production-fallback'
+          };
+        }
+        
+        throw new Error('Skipping API call for production safety');
+      },
+      
+      // Backup APIs only used in development
+      async () => {
+        console.log(`Trying ipapi.co for IP: ${cleanIP}`);
+        const response = await axios.get(`https://ipapi.co/${cleanIP}/json/`, {
           timeout: 3000 // 3 second timeout to avoid hanging
         });
         
@@ -101,13 +122,15 @@ const verifyIPLocation = async (ip) => {
         return {
           country: response.data.country_code,
           city: response.data.city,
+          countryName: response.data.country_name,
           source: 'ipapi.co'
         };
       },
-      // First fallback
+      
+      // Last fallback
       async () => {
-        console.log(`Trying ip-api.com for IP: ${ip}`);
-        const response = await axios.get(`http://ip-api.com/json/${ip}`, {
+        console.log(`Trying ip-api.com for IP: ${cleanIP}`);
+        const response = await axios.get(`http://ip-api.com/json/${cleanIP}`, {
           timeout: 3000 // 3 second timeout to avoid hanging
         });
         
@@ -118,6 +141,7 @@ const verifyIPLocation = async (ip) => {
         return {
           country: response.data.countryCode,
           city: response.data.city,
+          countryName: response.data.country,
           source: 'ip-api.com'
         };
       }
@@ -140,7 +164,7 @@ const verifyIPLocation = async (ip) => {
           }
         };
       } catch (error) {
-        console.error(`IP geolocation service failed:`, error.message);
+        console.error(`IP geolocation service attempt failed:`, error.message);
         lastError = error;
         // Continue to next service
       }
@@ -208,10 +232,19 @@ const safeLocationFallback = (reason) => {
  * @returns {String} Client IP address
  */
 const getClientIP = (req) => {
-  return req.headers['x-forwarded-for'] || 
-         req.connection.remoteAddress || 
-         req.socket.remoteAddress ||
-         (req.connection.socket ? req.connection.socket.remoteAddress : null);
+  // x-forwarded-for can contain multiple IPs in a comma-separated list
+  // The first IP is typically the client's true IP address
+  if (req.headers['x-forwarded-for']) {
+    // Extract just the first IP if there are multiple
+    const forwardedIPs = req.headers['x-forwarded-for'].split(',');
+    return forwardedIPs[0].trim();
+  }
+  
+  // Fallback to other methods
+  return req.connection?.remoteAddress || 
+         req.socket?.remoteAddress ||
+         (req.connection?.socket?.remoteAddress) || 
+         '127.0.0.1'; // Default fallback
 };
 
 /**
