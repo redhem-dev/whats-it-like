@@ -12,17 +12,30 @@ exports.createReply = async (req, res) => {
     const { content } = req.body;
     const { postId } = req.params;
     
+    // AI moderation results are available from middleware
+    // If we reach this point, the reply was approved by AI
+    const moderationResult = req.moderationResult;
+    console.log('Reply approved by AI moderation system');
+    
     // Verify the post exists
     const post = await Post.findById(postId);
     if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Post not found',
+        details: {
+          error_type: 'post_not_found',
+          appeal_message: 'The post you are trying to reply to may have been deleted.'
+        }
+      });
     }
     
     // Create new reply
     const reply = new Reply({
       postId,
       authorId: req.user.userId,  // From auth middleware - using consistent userId property
-      content
+      content,
+      moderationResult: moderationResult // Store AI moderation data
     });
     
     await reply.save();
@@ -31,10 +44,21 @@ exports.createReply = async (req, res) => {
     const populatedReply = await Reply.findById(reply._id)
       .populate('authorId', 'email firstName lastName');
     
-    res.status(201).json(populatedReply);
+    res.status(201).json({
+      success: true,
+      reply: populatedReply,
+      message: 'Reply created successfully'
+    });
   } catch (error) {
     console.error('Create reply error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to create reply due to a server error',
+      details: {
+        error_type: 'server_error',
+        appeal_message: 'Please try again. If the problem persists, contact support.'
+      }
+    });
   }
 };
 

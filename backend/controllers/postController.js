@@ -26,8 +26,13 @@ exports.createPost = async (req, res) => {
       return res.status(400).json({ message: 'Country and city are required' });
     }
     
-    // For MVP, we're skipping the AI moderation step
-    // Note: In the full implementation, we would call an AI moderation API here
+    // AI moderation results are available from middleware
+    // If we reach this point, the post was approved by AI
+    const moderationResult = req.moderationResult;
+    console.log('Post approved by AI moderation system');
+    
+    // All posts that reach this point are approved
+    const postStatus = 'approved';
     
     // Make sure we have the user ID from the auth middleware
     if (!req.user || !req.user.userId) {
@@ -45,7 +50,14 @@ exports.createPost = async (req, res) => {
         city: location.city,
         verified: location.verified || false
       },
-      status: 'approved', // Auto-approve for MVP
+      status: postStatus, // Set based on AI moderation result
+      moderationData: moderationResult ? {
+        decision: moderationResult.decision,
+        confidence: moderationResult.confidence,
+        reasons: moderationResult.reasons,
+        severity: moderationResult.severity,
+        timestamp: new Date()
+      } : null,
       votes: {
         upvotes: 0,
         downvotes: 0,

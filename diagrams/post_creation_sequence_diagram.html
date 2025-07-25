@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post Creation Sequence Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'neutral',
+                sequence: { 
+                    showSequenceNumbers: false,
+                    actorMargin: 80,
+                    boxMargin: 10,
+                    noteMargin: 10,
+                    messageMargin: 35
+                }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .diagram-container {
+            margin-top: 30px;
+            overflow-x: auto;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Post Creation Sequence Diagram</h1>
+        
+        <div class="diagram-container">
+            <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant F as Frontend
+    participant A as Auth Service
+    participant L as Location Service
+    participant P as Post Service
+    participant D as Database
+
+    Note over U,D: Post Creation Process
+
+    %% Authentication check
+    U->>F: Navigate to Create Post Page
+    F->>A: Check Authentication Status
+    
+    alt Not Authenticated
+        A->>F: Authentication Failed
+        F->>U: Redirect to Login Page
+        Note over U: Authentication Required
+    else Authenticated
+        A->>F: Authentication Confirmed
+        
+        %% Location verification
+        F->>L: Verify User Location
+        
+        alt Development Environment
+            L->>F: Development Mode Detected
+            F->>F: Bypass Location Check
+        else Production Environment
+            L->>U: Request Browser Location
+            
+            alt Location Permission Granted
+                U->>F: Allow Location Access
+                F->>L: Validate Coordinates
+                
+                alt Location in Bosnia
+                    L->>F: Location Verified
+                else Location Not in Bosnia
+                    L->>F: Location Outside Bosnia
+                    F->>U: Display Location Error
+                    Note over U: Try Again or Cancel
+                    opt User Tries Again
+                        U->>F: Retry Location Verification
+                        F->>L: Verify User Location
+                    end
+                end
+            else Location Permission Denied
+                U->>F: Deny Location Access
+                F->>L: Fall Back to IP Location
+                
+                alt IP in Bosnia
+                    L->>F: Location Verified
+                else IP Not in Bosnia
+                    L->>F: Location Outside Bosnia
+                    F->>U: Display Location Error
+                    Note over U: Cannot Proceed
+                end
+            end
+        end
+        
+        %% Show post form
+        F->>U: Display Post Creation Form
+        U->>F: Fill Form and Submit
+        
+        %% Client-side validation
+        F->>F: Validate Form Data
+        
+        alt Form Validation Failed
+            F->>U: Show Form Errors
+            Note over U: Fix Errors and Resubmit
+        else Form Validation Passed
+            F->>P: Submit Post Data
+            
+            %% Server-side validation and processing
+            P->>P: Server Validation
+            
+            alt Server Validation Failed
+                P->>F: Return Validation Errors
+                F->>U: Display Server Errors
+                Note over U: Fix Errors and Resubmit
+            else Server Validation Passed
+                P->>D: Save New Post
+                D->>P: Post Created Successfully
+                P->>D: Update User's Post List
+                D->>P: User Posts Updated
+                P->>F: Post Creation Success
+                F->>U: Redirect to Dashboard
+                Note over U: Post Creation Complete
+            end
+        end
+    end
+            </pre>
+        </div>
+        
+        <div class="description">
+            <h2>Post Creation Process</h2>
+            <p>This sequence diagram illustrates the complete flow of creating a new post in the "What's It Like" application:</p>
+            <ul>
+                <li><strong>Authentication Check</strong>: Verifies that the user is logged in before allowing post creation</li>
+                <li><strong>Location Verification</strong>: Ensures the user is posting from Bosnia using browser geolocation or IP fallback</li>
+                <li><strong>Form Submission</strong>: User completes and submits the post creation form</li>
+                <li><strong>Validation</strong>: Both client-side and server-side validation of post data</li>
+                <li><strong>Database Operations</strong>: Saving the post and updating user's post list</li>
+                <li><strong>User Feedback</strong>: Error handling and success confirmation</li>
+            </ul>
+            <p>The diagram covers all possible paths including error scenarios, retries, and environment-specific behavior.</p>
+        </div>
+    </div>
+</body>
+</html>

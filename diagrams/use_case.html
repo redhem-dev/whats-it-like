@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What's It Like - Use Case Diagram</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        h1 {
+            color: #0056b3;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .diagram-container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        pre {
+            background-color: #e9e9e9;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .mermaid {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center; /* Center the diagram */
+            overflow-x: auto; /* For larger diagrams */
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</head>
+<body>
+    <h1>What's It Like - Use Case Diagram</h1>
+
+    <div class="diagram-container">
+        <p>This use case diagram illustrates the primary interactions between the actors and the "What's It Like" platform, focusing on the most critical functionalities.</p>
+
+        <div class="mermaid">
+            graph LR
+                %% Actors
+                UnverifiedUser["Unverified User"]
+                VerifiedUser["Verified User"]
+                
+                %% Authentication use cases
+                SignUp["Sign Up"]
+                Login["Login"]
+                IDVerify["ID Verification"]
+                
+                %% Post management
+                CreatePost["Create Post"]
+                ViewFeed["View Feed"]
+                ViewPost["View Post"]
+                EditPost["Edit Post"]
+                DeletePost["Delete Post"]
+                SearchPosts["Search Posts"]
+                
+                %% Interaction
+                VotePost["Vote on Post"]
+                ReplyPost["Reply to Post"]
+                ViewOwnProfile["View Own Profile"]
+                ViewOtherProfile["View Other Profile"]
+                
+                %% Supporting functions
+                LocationValidation["Location Validation"]
+                UpdateReputation["Update Reputation"]
+                LocationFilter["Location Filter"]
+                PopularitySort["Popularity Sort"]
+                RecencySort["Recency Sort"]
+                
+                %% Subgraphs for organization
+                subgraph Actors
+                    UnverifiedUser
+                    VerifiedUser
+                end
+                
+                subgraph "Authentication & Verification"
+                    SignUp
+                    Login
+                    IDVerify
+                end
+                
+                subgraph "Post Management"
+                    CreatePost
+                    ViewFeed
+                    ViewPost
+                    EditPost
+                    DeletePost
+                    SearchPosts
+                    LocationValidation
+                end
+                
+                subgraph "Interaction & Reputation"
+                    VotePost
+                    ReplyPost
+                    ViewOwnProfile
+                    ViewOtherProfile
+                    UpdateReputation
+                end
+                
+                subgraph "Filtering & Sorting"
+                    LocationFilter
+                    PopularitySort
+                    RecencySort
+                end
+                
+                %% Connections from actors to use cases
+                UnverifiedUser --> SignUp
+                UnverifiedUser --> Login
+                VerifiedUser --> CreatePost
+                VerifiedUser --> ViewFeed
+                VerifiedUser --> ViewPost
+                VerifiedUser --> EditPost
+                VerifiedUser --> DeletePost
+                VerifiedUser --> SearchPosts
+                VerifiedUser --> VotePost
+                VerifiedUser --> ReplyPost
+                VerifiedUser --> ViewOwnProfile
+                VerifiedUser --> ViewOtherProfile
+                
+                %% Relationships between use cases
+                Login -.-> IDVerify
+                SignUp -.-> IDVerify
+                CreatePost -.-> LocationValidation
+                VotePost -.-> UpdateReputation
+                
+                %% Filter connections
+                LocationFilter -.-> ViewFeed
+                PopularitySort -.-> ViewFeed
+                RecencySort -.-> ViewFeed
+                
+                %% Styling
+                classDef actor fill:#e8f4f8,stroke:#156082,stroke-width:2px
+                classDef useCase fill:#f9f9f9,stroke:#666
+                
+                class UnverifiedUser,VerifiedUser actor
+                class SignUp,Login,IDVerify,CreatePost,ViewFeed,ViewPost,EditPost,DeletePost,SearchPosts,VotePost,ReplyPost,ViewOwnProfile,ViewOtherProfile,LocationValidation,UpdateReputation,LocationFilter,PopularitySort,RecencySort useCase
+        </div>
+        <p><strong>Key Use Cases Included:</strong></p>
+        <ul>
+            <li><strong>Authentication & Verification:</strong> Signing up, logging in, and the mandatory ID verification process.</li>
+            <li><strong>Post Management:</strong> Creating, viewing, editing, deleting posts, and searching for content.</li>
+            <li><strong>Interaction & Reputation:</strong> Voting, replying, and managing profiles, including the impact on reputation.</li>
+            <li><strong>Filtering & Sorting:</strong> Location-based filtering, popularity and recency sorting of content.</li>
+        </ul>
+    </div>
+</body>
+</html>

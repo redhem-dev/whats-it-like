@@ -16,6 +16,15 @@ const replySchema = new Schema({
     type: String,
     required: true
   },
+  moderationResult: {
+    decision: String,
+    confidence: Number,
+    reasons: [String],
+    categories: [String],
+    severity: String,
+    suggested_action: String,
+    admin_alert: Boolean
+  },
   votes: {
     upvotes: {
       type: Number,

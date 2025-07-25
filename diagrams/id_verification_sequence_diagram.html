@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ID Verification Sequence Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'neutral',
+                sequence: { 
+                    showSequenceNumbers: false,
+                    actorMargin: 80,
+                    boxMargin: 10,
+                    noteMargin: 10,
+                    messageMargin: 35
+                }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .diagram-container {
+            margin-top: 30px;
+            overflow-x: auto;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ID Verification Sequence Diagram</h1>
+        
+        <div class="diagram-container">
+            <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant F as Frontend
+    participant A as Auth Service
+    participant O as OCR Service
+    participant V as Verification Service
+    participant D as Database
+
+    Note over U,D: ID Verification Process
+
+    %% Start verification
+    U->>F: Initiate Registration
+    alt Google Auth
+        F->>A: Request Google Authentication
+        A->>U: Redirect to Google Auth
+        U->>A: Provide Google Credentials
+        A->>F: Return Authentication Token
+        F->>F: Store Session Data
+    else Standard Auth
+        F->>U: Show Registration Form
+        U->>F: Submit Registration Details
+        F->>A: Create Temporary Account
+        A->>F: Registration Started
+    end
+
+    %% ID Upload
+    F->>U: Display ID Upload Form
+    U->>F: Upload ID Document
+    F->>O: Process ID Image
+
+    %% OCR Processing
+    O->>O: Run OCR on Image
+    O->>V: Send Extracted Text
+    
+    %% ID Validation
+    V->>V: Detect ID Type
+    alt Bosnian ID Detected
+        V->>V: Extract ID Number
+        V->>V: Extract Name
+        V->>V: Validate ID Format
+        
+        alt Valid Format
+            V->>D: Check if ID Already Registered
+            
+            alt ID Not Registered
+                V->>A: Create User Account
+                A->>A: Generate Avatar
+                A->>D: Set Up User Profile
+                D->>A: Profile Created
+                A->>F: Verification Success
+                F->>U: Display Success & Redirect
+            else ID Already Registered
+                D->>V: ID Already Exists
+                V->>F: Verification Failed
+                F->>U: Display Error (ID Already Used)
+                Note over U: Retry with Different ID
+            end
+        else Invalid Format
+            V->>F: Invalid ID Format
+            F->>U: Display Error (Invalid Format)
+            Note over U: Retry with Valid ID
+        end
+    else Non-Bosnian ID
+        V->>F: Unsupported ID Type
+        F->>U: Display Error (Unsupported ID)
+        Note over U: Retry with Bosnian ID
+    end
+            </pre>
+        </div>
+        
+        <div class="description">
+            <h2>ID Verification Process</h2>
+            <p>This sequence diagram illustrates the interaction between different components during the ID verification process:</p>
+            <ul>
+                <li><strong>Authentication Flow</strong>: Users can register via Google or standard authentication</li>
+                <li><strong>ID Upload</strong>: User uploads their Bosnian ID for verification</li>
+                <li><strong>OCR Processing</strong>: The system extracts information from the ID using OCR</li>
+                <li><strong>Validation</strong>: The system validates the ID format and checks for duplicates</li>
+                <li><strong>Account Creation</strong>: Upon successful verification, a user account is created</li>
+            </ul>
+            <p>The diagram shows all possible paths including error scenarios and retry flows.</p>
+        </div>
+    </div>
+</body>
+</html>

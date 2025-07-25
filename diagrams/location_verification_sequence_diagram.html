@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Verification Sequence Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            mermaid.initialize({
+                startOnLoad: true,
+                theme: 'neutral',
+                sequence: { 
+                    showSequenceNumbers: false,
+                    actorMargin: 80,
+                    boxMargin: 10,
+                    noteMargin: 10,
+                    messageMargin: 35
+                }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .diagram-container {
+            margin-top: 30px;
+            overflow-x: auto;
+        }
+        .description {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Location Verification Sequence Diagram</h1>
+        
+        <div class="diagram-container">
+            <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant F as Frontend
+    participant E as Environment Service
+    participant G as Geolocation Service
+    participant I1 as IP API Service 1
+    participant I2 as IP API Service 2
+    participant L as Location Validator
+
+    Note over U,L: Location Verification Process
+    
+    U->>F: Request Action Requiring Location
+    F->>E: Check Environment
+    
+    alt Development Mode
+        E->>F: Development Environment Detected
+        F->>F: Bypass Verification
+        F->>U: Continue with Mock Bosnia Location
+    else Production Mode
+        E->>F: Production Environment Detected
+        F->>F: Check IP Type
+        
+        alt Public IP
+            F->>U: Request Browser Geolocation Permission
+            
+            alt Permission Granted
+                U->>F: Allow Location Access
+                F->>G: Get Coordinates
+                G->>F: Return Latitude/Longitude
+                F->>G: Reverse Geocode Coordinates
+                G->>F: Return Country Information
+            else Permission Denied
+                U->>F: Deny Location Access
+                F->>F: Fall Back to IP-based Location
+            end
+        else Private/Local IP
+            F->>F: Detect Private/Local IP
+        end
+        
+        alt Using IP Fallback
+            F->>I1: Request Location from Primary IP API
+            
+            alt API 1 Success
+                I1->>F: Return Country Information
+            else API 1 Failed/Rate Limited
+                F->>I2: Request Location from Secondary IP API
+                
+                alt API 2 Success
+                    I2->>F: Return Country Information
+                else API 2 Failed
+                    I2->>F: API Error
+                    F->>U: Display Location Error
+                    Note over U: Cannot Proceed Without Location
+                end
+            end
+        end
+        
+        F->>L: Validate Country
+        
+        alt Country is Bosnia
+            L->>F: Location Verified
+            F->>U: Continue with Verified Bosnia Location
+        else Country is Not Bosnia
+            L->>F: Location Outside Bosnia
+            F->>U: Display Location Restriction Error
+            Note over U: Cannot Access Location-Restricted Feature
+        end
+    end
+            </pre>
+        </div>
+        
+        <div class="description">
+            <h2>Location Verification Process</h2>
+            <p>This sequence diagram illustrates the location verification process used to ensure users are accessing the platform from Bosnia:</p>
+            <ul>
+                <li><strong>Environment Detection</strong>: Different behavior for development vs. production environments</li>
+                <li><strong>Geolocation Strategy</strong>: Primary method using browser geolocation with user permission</li>
+                <li><strong>IP Fallback</strong>: Secondary method using IP-based location when browser geolocation is unavailable</li>
+                <li><strong>Redundant APIs</strong>: Multiple IP location APIs for reliability</li>
+                <li><strong>Validation</strong>: Final check to confirm the user is in Bosnia</li>
+            </ul>
+            <p>The diagram shows the complete flow including all fallback mechanisms and error handling scenarios.</p>
+        </div>
+    </div>
+</body>
+</html>

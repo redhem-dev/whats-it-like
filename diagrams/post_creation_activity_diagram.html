@@ -52,67 +52,56 @@
             <pre class="mermaid">
                 %%{init: {'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f0f8ff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
                 stateDiagram-v2
-                    [*] --> CheckAuthentication
+                    [*] --> CheckUserStatus
                     
-                    CheckAuthentication --> Unauthorized: Not Authenticated
-                    Unauthorized --> [*]: Redirect to Login
+                    state auth_check <<choice>>
+                    CheckUserStatus --> auth_check
+                    auth_check --> LoginProcess: Not Authenticated
+                    auth_check --> VerifyLocation: Authenticated
                     
-                    CheckAuthentication --> VerifyLocation: Authenticated
+                    LoginProcess --> [*]: Cannot Create Post
                     
-                    VerifyLocation --> LocationFailed: Location Not in Bosnia
-                    LocationFailed --> RetryLocation: Try Again
+                    state location_check <<choice>>
+                    VerifyLocation --> location_check
+                    location_check --> CreatePostForm: Location in Bosnia
+                    location_check --> LocationError: Not in Bosnia
+                    
+                    LocationError --> RetryLocation: Try Again
                     RetryLocation --> VerifyLocation
-                    LocationFailed --> [*]: Cancel
+                    LocationError --> [*]: Cancel Post Creation
                     
-                    VerifyLocation --> ShowPostForm: Location Verified
+                    CreatePostForm --> SubmitPost: User Completes Form
                     
-                    ShowPostForm --> ValidateForm: User Submits Form
-                    ValidateForm --> ShowFormErrors: Validation Failed
-                    ShowFormErrors --> ShowPostForm: Show Error Messages
+                    state form_valid <<choice>>
+                    SubmitPost --> form_valid: Validate Submission
+                    form_valid --> ProcessPost: Valid Form
+                    form_valid --> ShowErrors: Invalid Form
                     
-                    ValidateForm --> SubmitToServer: Form Valid
+                    ShowErrors --> CreatePostForm: Fix and Resubmit
                     
-                    SubmitToServer --> ServerValidation
-                    ServerValidation --> ShowServerErrors: Server Validation Failed
-                    ShowServerErrors --> ShowPostForm: Display Server Errors
+                    ProcessPost --> SavePost: All Checks Pass
+                    SavePost --> PostComplete
                     
-                    ServerValidation --> SavePost: Validation Passed
-                    SavePost --> UpdateUserPosts: Add to User's Posts
-                    UpdateUserPosts --> RedirectToDashboard: Success
-                    
-                    RedirectToDashboard --> [*]: Complete
-                    
-                    state if_dev <<choice>>
-                    VerifyLocation --> if_dev: Check Environment
-                    if_dev --> ShowPostForm: Development Mode
-                    if_dev --> CheckBrowserLocation: Production Mode
-                    
-                    CheckBrowserLocation --> CheckIPLocation: Browser Location Denied
-                    CheckBrowserLocation --> ValidateCoordinates: Browser Location Allowed
-                    
-                    ValidateCoordinates --> LocationVerified: In Bosnia
-                    ValidateCoordinates --> LocationFailed: Not in Bosnia
-                    
-                    CheckIPLocation --> LocationVerified: IP in Bosnia
-                    CheckIPLocation --> LocationFailed: IP not in Bosnia
-                    
-                    LocationVerified --> ShowPostForm
+                    PostComplete --> [*]: Post Created Successfully
             </pre>
         </div>
         
         <div class="description">
             <h3>Diagram Description:</h3>
-            <p>This activity diagram illustrates the post creation process in the "What's It Like" application:</p>
+            <p>This simplified activity diagram shows the essential post creation flow in the "What's It Like" application:</p>
             <ul>
-                <li><strong>Authentication Check:</strong> Verifies the user is logged in before allowing post creation</li>
-                <li><strong>Location Verification:</strong> A critical security step ensuring users are physically located in Bosnia and Herzegovina</li>
-                <li><strong>Development Mode Bypass:</strong> In development environments, location verification is bypassed for easier testing</li>
-                <li><strong>Form Validation:</strong> Client-side validation of post content, title, and other required fields</li>
-                <li><strong>Server Validation:</strong> Additional validation on the server side</li>
-                <li><strong>Post Creation:</strong> Saving the post to the database and associating it with the user</li>
-                <li><strong>Redirection:</strong> After successful creation, the user is redirected to the dashboard</li>
+                <li><strong>Main Flow:</strong> Shows the primary path from initiating post creation to successful completion</li>
+                <li><strong>Key Decision Points:</strong>
+                    <ul>
+                        <li>Authentication check: Is the user logged in?</li>
+                        <li>Location verification: Is the user in Bosnia?</li>
+                        <li>Form validation: Is the post content valid?</li>
+                    </ul>
+                </li>
+                <li><strong>Core Process:</strong> Creating a post requires authentication, location verification, and valid content</li>
+                <li><strong>Outcomes:</strong> Either successful post creation or appropriate error handling with retry options</li>
             </ul>
-            <p>The diagram highlights the location verification process which is central to the application's functionality, ensuring content is created by users physically present in Bosnia and Herzegovina.</p>
+            <p>This high-level diagram focuses on the essential decision points rather than implementation details, showing how the system ensures posts are only created by authenticated users physically located in Bosnia with valid content.</p>
         </div>
     </div>
 </body>

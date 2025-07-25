@@ -52,72 +52,58 @@
             <pre class="mermaid">
                 %%{init: {'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f0f8ff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
                 stateDiagram-v2
-                    [*] --> InitiateVerification
+                    [*] --> BeginRegistration
                     
-                    InitiateVerification --> GoogleAuth: Google Registration Flow
-                    InitiateVerification --> StandardAuth: Standard Registration Flow
+                    BeginRegistration --> SelectAuthMethod
                     
-                    GoogleAuth --> StoreSessionData: Temporary Storage
-                    StoreSessionData --> ShowIDUploadForm
+                    state auth_choice <<choice>>
+                    SelectAuthMethod --> auth_choice
+                    auth_choice --> GoogleAuth: Google Login
+                    auth_choice --> StandardAuth: Email & Password
                     
-                    StandardAuth --> ShowIDUploadForm
+                    GoogleAuth --> ProvideIDDocument
+                    StandardAuth --> ProvideIDDocument
                     
-                    ShowIDUploadForm --> UploadIDCard: User Uploads ID
+                    ProvideIDDocument --> VerifyDocument
                     
-                    UploadIDCard --> ProcessImage: Send to Server
-                    ProcessImage --> RunOCR: Extract Text
+                    state document_valid <<choice>>
+                    VerifyDocument --> document_valid: Check ID
+                    document_valid --> IDVerified: Valid Bosnian ID
+                    document_valid --> IDRejected: Invalid or Non-Bosnian ID
                     
-                    RunOCR --> DetectIDType: Analyze Text
+                    state id_unique <<choice>>
+                    IDVerified --> id_unique: Check if ID is unique
+                    id_unique --> CreateAccount: ID Not Registered
+                    id_unique --> IDRejected: ID Already Used
                     
-                    DetectIDType --> ProcessBosnianID: Bosnian ID Detected
+                    CreateAccount --> CompleteRegistration
                     
-                    ProcessBosnianID --> ExtractIDNumber: Get ID Number
-                    ProcessBosnianID --> ExtractName: Get Name
+                    CompleteRegistration --> [*]: Success
                     
-                    ExtractIDNumber --> ValidateIDFormat: Check Format
+                    IDRejected --> RetryVerification
+                    RetryVerification --> ProvideIDDocument: Try Again
                     
-                    state if_valid_id <<choice>>
-                    ValidateIDFormat --> if_valid_id
-                    if_valid_id --> VerificationFailed: Invalid Format
-                    if_valid_id --> CheckIDExists: Valid Format
-                    
-                    state if_id_exists <<choice>>
-                    CheckIDExists --> if_id_exists
-                    if_id_exists --> VerificationFailed: ID Already Registered
-                    if_id_exists --> CreateUserAccount: ID Not Registered
-                    
-                    CreateUserAccount --> GenerateAvatar: Create Initials Avatar
-                    GenerateAvatar --> SetupUserProfile
-                    
-                    SetupUserProfile --> VerificationSuccess
-                    
-                    VerificationSuccess --> [*]: Complete Registration
-                    VerificationFailed --> ShowError: Display Error Message
-                    ShowError --> ShowIDUploadForm: Try Again
-                    
-                    ShowIDUploadForm --> CancelVerification: User Cancels
-                    CancelVerification --> [*]: Abort Registration
+                    RetryVerification --> CancelRegistration: Cancel
+                    CancelRegistration --> [*]: Registration Aborted
             </pre>
         </div>
         
         <div class="description">
             <h3>Diagram Description:</h3>
-            <p>This activity diagram illustrates the ID verification process in the "What's It Like" application:</p>
+            <p>This simplified activity diagram shows the core ID verification process for the "What's It Like" application:</p>
             <ul>
-                <li><strong>Multiple Entry Points:</strong> The verification can be initiated from either standard registration or after Google authentication</li>
-                <li><strong>ID Upload:</strong> Users must upload an image of their Bosnian ID card</li>
-                <li><strong>OCR Processing:</strong> The system uses optical character recognition to extract text from the ID image</li>
-                <li><strong>Bosnian ID Focus:</strong> The system specifically processes Bosnian ID cards, extracting the ID number and name</li>
-                <li><strong>Validation Checks:</strong>
+                <li><strong>Main Flow:</strong> Shows the primary path from registration to account creation</li>
+                <li><strong>Key Decisions:</strong>
                     <ul>
-                        <li>ID format validation to ensure it matches Bosnian ID patterns</li>
-                        <li>Duplicate checking to prevent multiple accounts with the same ID</li>
+                        <li>Authentication method choice (Google or Standard)</li>
+                        <li>ID document validity check</li>
+                        <li>Uniqueness check (ensuring ID hasn't been used before)</li>
                     </ul>
                 </li>
-                <li><strong>Account Creation:</strong> Upon successful verification, the system creates the user account</li>
-                <li><strong>Avatar Generation:</strong> The system generates an avatar using the user's initials from their verified name</li>
+                <li><strong>Core Process:</strong> Users must provide a valid Bosnian ID document to register</li>
+                <li><strong>Outcomes:</strong> Either successful account creation or rejection with retry option</li>
             </ul>
-            <p>The diagram highlights the mandatory ID verification step that ensures users are from Bosnia and Herzegovina, and the consistent avatar generation using the verified name information.</p>
+            <p>This high-level diagram focuses on the critical decision points in the verification flow rather than implementation details, showing how the system ensures only users with valid Bosnian IDs can create accounts.</p>
         </div>
     </div>
 </body>

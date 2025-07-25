@@ -388,10 +388,31 @@ const SinglePostPage = () => {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to submit reply');
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Handle AI moderation rejection with specific messages
+        if (response.status === 400 && errorData.message) {
+          // AI rejected the reply - show specific reasons
+          let errorMessage = errorData.message;
+          if (errorData.details && errorData.details.reasons && errorData.details.reasons.length > 0) {
+            errorMessage += ` Reasons: ${errorData.details.reasons.join(', ')}`;
+          }
+          if (errorData.details && errorData.details.appeal_message) {
+            errorMessage += ` ${errorData.details.appeal_message}`;
+          }
+          throw new Error(errorMessage);
+        }
+        
+        // Handle other errors (server errors, etc.)
+        if (response.status === 500 && errorData.message) {
+          throw new Error(errorData.message);
+        }
+        
+        throw new Error(errorData.message || 'Failed to submit reply');
       }
       
-      const newReplyData = await response.json();
+      const responseData = await response.json();
+      const newReplyData = responseData.reply || responseData;
       
       // Format the new reply to match our component's expected structure
       const formattedNewReply = {

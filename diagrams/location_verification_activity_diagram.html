@@ -52,69 +52,51 @@
             <pre class="mermaid">
                 %%{init: {'theme': 'neutral', 'themeVariables': { 'primaryColor': '#f0f8ff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#fff0f0'}}}%%
                 stateDiagram-v2
-                    [*] --> CheckEnvironment
+                    [*] --> RequestLocation
+                    
+                    RequestLocation --> AttemptVerification
                     
                     state if_dev <<choice>>
-                    CheckEnvironment --> if_dev
-                    if_dev --> BypassVerification: Development Mode
-                    if_dev --> CheckIPType: Production Mode
+                    AttemptVerification --> if_dev: Check Environment
+                    if_dev --> LocationVerified: Development Mode
+                    if_dev --> GetUserLocation: Production Mode
                     
-                    BypassVerification --> ReturnMockLocation
-                    ReturnMockLocation --> [*]: Return Bosnia Location
+                    state if_method <<choice>>
+                    GetUserLocation --> if_method: Determine Method
+                    if_method --> BrowserGeolocation: Try Browser First
+                    if_method --> IPGeolocation: Fallback
                     
-                    state if_private_ip <<choice>>
-                    CheckIPType --> if_private_ip
-                    if_private_ip --> TryBrowserGeolocation: Public IP
-                    if_private_ip --> UseIPFallback: Private/Local IP
+                    BrowserGeolocation --> ValidateLocation: Success
+                    BrowserGeolocation --> IPGeolocation: Failed
                     
-                    TryBrowserGeolocation --> BrowserPermission: Request Location
-                    
-                    BrowserPermission --> GetCoordinates: Permission Granted
-                    BrowserPermission --> UseIPFallback: Permission Denied
-                    
-                    GetCoordinates --> ReverseGeocode: Get Lat/Long
-                    ReverseGeocode --> ValidateCountry: Get Country
-                    
-                    UseIPFallback --> CallIPAPI1: Try Primary API
-                    CallIPAPI1 --> CheckIPAPI1Response
-                    
-                    CheckIPAPI1Response --> ValidateCountry: Success
-                    CheckIPAPI1Response --> CallIPAPI2: Failed/Rate Limited
-                    
-                    CallIPAPI2 --> CheckIPAPI2Response
-                    CheckIPAPI2Response --> ValidateCountry: Success
-                    CheckIPAPI2Response --> LocationError: All APIs Failed
+                    IPGeolocation --> ValidateLocation: IP Located
+                    IPGeolocation --> LocationError: Unable to Locate
                     
                     state if_bosnia <<choice>>
-                    ValidateCountry --> if_bosnia
-                    if_bosnia --> LocationVerified: Country is Bosnia
-                    if_bosnia --> LocationFailed: Not Bosnia
+                    ValidateLocation --> if_bosnia: Check Country
+                    if_bosnia --> LocationVerified: Is Bosnia
+                    if_bosnia --> LocationError: Not Bosnia
                     
-                    LocationVerified --> CacheResult: Store in Context
-                    CacheResult --> [*]: Return Success
-                    
-                    LocationFailed --> [*]: Return Failure
-                    LocationError --> [*]: Return Error
+                    LocationVerified --> [*]: Success
+                    LocationError --> [*]: Failure
             </pre>
         </div>
         
         <div class="description">
             <h3>Diagram Description:</h3>
-            <p>This activity diagram illustrates the location verification process in the "What's It Like" application:</p>
+            <p>This simplified activity diagram illustrates the core location verification process in the "What's It Like" application:</p>
             <ul>
-                <li><strong>Environment Detection:</strong> The system first checks if it's running in development or production mode</li>
-                <li><strong>Development Bypass:</strong> In development environments, location verification is bypassed with mock Bosnia location data</li>
-                <li><strong>IP Type Detection:</strong> The system identifies if the user is on a private/local IP or public IP</li>
-                <li><strong>Multiple Verification Methods:</strong>
+                <li><strong>Main Flow:</strong> Shows the primary path for verifying a user's location</li>
+                <li><strong>Key Decisions:</strong> 
                     <ul>
-                        <li>Browser Geolocation API (preferred method)</li>
-                        <li>IP-based geolocation using multiple fallback services</li>
+                        <li>Whether user is in development or production environment</li>
+                        <li>Which geolocation method to use (browser or IP-based)</li>
+                        <li>Whether the detected location is in Bosnia</li>
                     </ul>
                 </li>
-                <li><strong>Country Validation:</strong> Verification that the user is physically in Bosnia and Herzegovina</li>
-                <li><strong>Result Caching:</strong> Successful verifications are cached to avoid repeated checks</li>
+                <li><strong>Outcomes:</strong> Either successful verification or failure with appropriate error handling</li>
             </ul>
-            <p>The diagram highlights the robust multi-layered approach to location verification, with development mode bypass for easier testing and multiple fallback mechanisms to ensure reliable verification in production.</p>
+            <p>This diagram focuses on the high-level workflow rather than implementation details, showing how the system determines whether a user is physically located in Bosnia before allowing location-restricted features.</p>
         </div>
     </div>
 </body>
